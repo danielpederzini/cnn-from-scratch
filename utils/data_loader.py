@@ -1,10 +1,9 @@
 import os
-import numpy as np
+import cupy as cp
 from PIL import Image
 from typing import Tuple, List, Optional
 from pathlib import Path
 import matplotlib.pyplot as plt
-
 
 class ImagenetteDataLoader:
     """
@@ -42,15 +41,15 @@ class ImagenetteDataLoader:
         """Collect all image paths and their corresponding labels."""
         for class_name in self.classes:
             class_dir = self.split_path / class_name
-            image_files = sorted([f for f in os.listdir(class_dir) 
-                                 if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+            image_files = sorted([file for file in os.listdir(class_dir) 
+                                 if file.lower().endswith(('.jpg', '.jpeg', '.png'))])
             
             for image_file in image_files:
                 image_path = class_dir / image_file
                 self.image_paths.append(str(image_path))
                 self.labels.append(self.class_to_idx[class_name])
     
-    def load_images(self) -> Tuple[np.ndarray, np.ndarray]:
+    def load_images(self) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load all images from the dataset.
         
@@ -71,20 +70,20 @@ class ImagenetteDataLoader:
                 if self.target_size is not None:
                     image = image.resize(self.target_size, Image.Resampling.LANCZOS)
                 
-                image_array = np.array(image)
-                image_array = np.transpose(image_array, (2, 0, 1))
+                image_array = cp.array(image)
+                image_array = cp.transpose(image_array, (2, 0, 1))
                 
                 images.append(image_array)
             except Exception as e:
                 print(f"Error loading image {image_path}: {e}")
                 continue
         
-        images = np.stack(images, axis=0)
-        labels = np.array(self.labels[:len(images)])
+        images = cp.stack(images, axis=0)
+        labels = cp.array(self.labels[:len(images)])
         
         return images, labels
     
-    def load_batch(self, indices: List[int]) -> Tuple[np.ndarray, np.ndarray]:
+    def load_batch(self, indices: List[int]) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load a batch of images by their indices.
         
@@ -110,8 +109,8 @@ class ImagenetteDataLoader:
                 if self.target_size is not None:
                     image = image.resize(self.target_size, Image.Resampling.LANCZOS)
                 
-                image_array = np.array(image)
-                image_array = np.transpose(image_array, (2, 0, 1))
+                image_array = cp.array(image)
+                image_array = cp.transpose(image_array, (2, 0, 1))
                 
                 batch_images.append(image_array)
                 batch_labels.append(self.labels[idx])
@@ -119,8 +118,8 @@ class ImagenetteDataLoader:
                 print(f"Error loading image at index {idx}: {e}")
                 continue
         
-        batch_images = np.stack(batch_images, axis=0)
-        batch_labels = np.array(batch_labels)
+        batch_images = cp.stack(batch_images, axis=0)
+        batch_labels = cp.array(batch_labels)
         
         return batch_images, batch_labels
     
@@ -149,8 +148,8 @@ class ImagenetteDataLoader:
             if self.target_size is not None:
                 image = image.resize(self.target_size, Image.Resampling.LANCZOS)
             
-            image_array = np.array(image)
-            return tuple(np.transpose(image_array, (2, 0, 1)).shape)
+            image_array = cp.array(image)
+            return tuple(cp.transpose(image_array, (2, 0, 1)).shape)
         except Exception as e:
             print(f"Error getting image shape: {e}")
             return None
