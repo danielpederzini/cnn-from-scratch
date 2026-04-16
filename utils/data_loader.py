@@ -49,7 +49,7 @@ class ImagenetteDataLoader:
                 self.image_paths.append(str(image_path))
                 self.labels.append(self.class_to_idx[class_name])
     
-    def load_images(self) -> Tuple[cp.ndarray, cp.ndarray]:
+    def load_images(self, normalize=False) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load all images from the dataset.
         
@@ -81,6 +81,9 @@ class ImagenetteDataLoader:
         images = cp.stack(images, axis=0)
         labels = cp.array(self.labels[:len(images)])
         
+        if normalize:
+            images = images / cp.max(images)
+
         return images, labels
     
     def load_batch(self, indices: List[int]) -> Tuple[cp.ndarray, cp.ndarray]:
