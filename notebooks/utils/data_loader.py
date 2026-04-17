@@ -80,6 +80,11 @@ class ImagenetteDataLoader:
         
         images = cp.stack(images, axis=0)
         labels = cp.array(self.labels[:len(images)])
+
+        num_samples = len(labels)
+        zeros = cp.zeros(shape=(num_samples, 10), dtype=int)
+        zeros[cp.arange(num_samples), labels.flatten()] = 1
+        labels = zeros
         
         if normalize:
             images = images / cp.max(images)
