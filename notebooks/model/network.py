@@ -4,6 +4,7 @@ from .layer import Layer
 from .relu_layer import ReluLayer
 from .sigmoid_layer import SigmoidLayer
 from .conv_layer import ConvLayer
+from .max_pool_layer import MaxPoolLayer
 
 class Network:
     """
@@ -16,6 +17,7 @@ class Network:
     
     LAYER_TYPES: dict[str, type] = {
         "Conv": ConvLayer,
+        "MaxPool": MaxPoolLayer,
         "ReLU": ReluLayer,
         "Sigmoid": SigmoidLayer,
     }
@@ -28,7 +30,8 @@ class Network:
             layer_definitions: List of dictionaries defining each layer.
                 For fully connected layers: 'type' (layer type), 'input_size', and 'num_neurons'.
                 For convolutional layers: 'type': 'Conv', 'num_filters', 'kernel_height', 
-                'kernel_width', 'padding', and 'stride'.
+                'kernel_width', 'num_channels', 'padding', and 'stride'.
+                For max pooling layers: 'type': 'MaxPool', 'pool_height', 'pool_width', and 'stride'.
         """
         self.layers: list[Union[Layer, ConvLayer]] = self.initialize_layers(layer_definitions=layer_definitions)
     
