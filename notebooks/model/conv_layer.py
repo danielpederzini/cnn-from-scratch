@@ -43,11 +43,13 @@ class ConvLayer:
             std,
             size=(num_filters, num_channels, kernel_height, kernel_width)
         )
+        self.biases: cp.ndarray = cp.zeros(shape=(num_filters,), dtype=cp.float32)
         self.last_input_shape: Optional[Tuple[int, int, int, int]] = None
         self.last_input_cols: Optional[cp.ndarray] = None
         self.last_linear_output: Optional[cp.ndarray] = None
         self.last_output_shape: Optional[Tuple[int, int]] = None
         self.w_grad: Optional[cp.ndarray] = None
+        self.b_grad: Optional[cp.ndarray] = None
 
     @staticmethod
     def from_definition(definition: Dict[str, Any]) -> "ConvLayer":
@@ -79,9 +81,10 @@ class ConvLayer:
         """
         layer_type: str = type(self).__name__
         filters_shape: tuple = self.filters.shape
-        layer_params: int = int(cp.prod(cp.array(filters_shape)).item())
+        biases_shape: tuple = self.biases.shape
+        layer_params: int = int(cp.prod(cp.array(filters_shape)).item() + biases_shape[0])
         
-        return f"{layer_type}\n  Filters Shape: {filters_shape}\n  Parameters: {layer_params:,}"
+        return f"{layer_type}\n  Filters Shape: {filters_shape} | Biases Shape: {biases_shape}\n  Parameters: {layer_params:,}"
 
 
     def flatten_filters(self) -> cp.ndarray:
@@ -287,6 +290,7 @@ class ConvLayer:
         num_samples: int = input.shape[0]
         output = output.reshape(num_samples, out_h, out_w, self.num_filters)
         output = output.transpose(0, 3, 1, 2)
+        output += self.biases.reshape(1, self.num_filters, 1, 1)
         self.last_linear_output = output
         
         return self.relu(output)
@@ -309,6 +313,7 @@ class ConvLayer:
 
         filters_grad: cp.ndarray = relu_grad_reshaped.T @ self.last_input_cols / batch_size
         self.w_grad = self.clip_grad(filters_grad.reshape(self.filters.shape))
+        self.b_grad = self.clip_grad(cp.mean(relu_grad, axis=(0, 2, 3)))
 
         input_cols_grad: cp.ndarray = relu_grad_reshaped @ self.flatten_filters()
         return self.col2im(input_cols_grad=input_cols_grad, input_shape=self.last_input_shape)
@@ -322,3 +327,6 @@ class ConvLayer:
         """
         if self.w_grad is not None:
             self.filters -= self.w_grad * learning_rate
+
+        if self.b_grad is not None:
+            self.biases -= self.b_grad * learning_rate

@@ -82,7 +82,7 @@ class Network:
                 biases_shape: tuple = layer.biases.shape
                 layer_params: int = int(weights_shape[0] * weights_shape[1] + biases_shape[0])
             elif hasattr(layer, 'filters'):
-                layer_params = int(cp.prod(cp.array(layer.filters.shape)).item())
+                layer_params = int(cp.prod(cp.array(layer.filters.shape)).item() + layer.biases.shape[0])
             else:
                 layer_params = 0
             
