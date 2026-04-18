@@ -35,7 +35,12 @@ class ConvLayer:
         self.num_channels: int = num_channels
         self.padding: int = padding
         self.stride: int = stride
-        self.filters: cp.ndarray = cp.random.random(
+        
+        fan_in: int = num_channels * kernel_height * kernel_width
+        std: float = float(cp.sqrt(2.0 / fan_in).item())
+        self.filters: cp.ndarray = cp.random.normal(
+            0,
+            std,
             size=(num_filters, num_channels, kernel_height, kernel_width)
         )
 
