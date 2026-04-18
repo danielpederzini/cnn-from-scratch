@@ -8,7 +8,7 @@ class ConvLayer:
     Implements a 2D convolution operation using the im2col (image-to-column)
     method for efficient computation. Filters are randomly initialized.
     """
-    
+
     def __init__(
         self,
         num_filters: int,
@@ -148,6 +148,18 @@ class ConvLayer:
 
         return cols, output_height, output_width
     
+    def relu(self, input: cp.ndarray) -> cp.ndarray:
+        """
+        Apply ReLU activation function.
+        
+        Args:
+            input: Input array
+            
+        Returns:
+            Activated output with negative values set to 0
+        """
+        return cp.maximum(0, input)
+
     def forward(self, x_batch: cp.ndarray) -> cp.ndarray:
         """
         Forward pass: compute convolution operation.
@@ -171,4 +183,4 @@ class ConvLayer:
         output = output.reshape(num_samples, out_h, out_w, self.num_filters)
         output = output.transpose(0, 3, 1, 2)
         
-        return output
+        return self.relu(output)
