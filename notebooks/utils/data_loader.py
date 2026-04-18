@@ -1,7 +1,8 @@
 import os
+import random
 import cupy as cp
 from PIL import Image
-from typing import Tuple, List, Optional
+from typing import Iterator, Tuple, List, Optional
 from pathlib import Path
 import matplotlib.pyplot as plt
 
@@ -32,12 +33,13 @@ class ImagenetteDataLoader:
         self.classes = sorted([d for d in os.listdir(self.split_path) 
                                if os.path.isdir(self.split_path / d)])
         self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(self.classes)}
+        self.num_classes = len(self.classes)
         
         self.image_paths = []
         self.labels = []
-        self._collect_images()
+        self.collect_images()
     
-    def _collect_images(self):
+    def collect_images(self):
         """Collect all image paths and their corresponding labels."""
         for class_name in self.classes:
             class_dir = self.split_path / class_name
@@ -48,8 +50,55 @@ class ImagenetteDataLoader:
                 image_path = class_dir / image_file
                 self.image_paths.append(str(image_path))
                 self.labels.append(self.class_to_idx[class_name])
+
+    def load_image(self, image_path: str, normalize: bool = False) -> cp.ndarray:
+        """
+        Load a single image into GPU memory.
+
+        Args:
+            image_path: Path to the image file
+            normalize: Whether to scale pixel values into the [0, 1] range
+
+        Returns:
+            Image tensor of shape (channels, height, width)
+        """
+        image = Image.open(image_path)
+
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+
+        if self.target_size is not None:
+            image = image.resize(self.target_size, Image.Resampling.LANCZOS)
+
+        image_array = cp.asarray(image, dtype=cp.float32)
+        image_array = cp.transpose(image_array, (2, 0, 1))
+
+        if normalize:
+            image_array /= 255.0
+
+        return image_array
+
+    def encode_labels(self, labels: List[int], one_hot: bool = True) -> cp.ndarray:
+        """
+        Encode label indices as either one-hot vectors or integer indices.
+
+        Args:
+            labels: Integer class labels
+            one_hot: Whether to return one-hot encoded labels
+
+        Returns:
+            Encoded labels tensor
+        """
+        label_array: cp.ndarray = cp.asarray(labels, dtype=cp.int32)
+
+        if not one_hot:
+            return label_array
+
+        encoded: cp.ndarray = cp.zeros((len(labels), self.num_classes), dtype=cp.float32)
+        encoded[cp.arange(len(labels)), label_array] = 1.0
+        return encoded
     
-    def load_images(self, normalize=False) -> Tuple[cp.ndarray, cp.ndarray]:
+    def load_images(self, normalize: bool = False) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load all images from the dataset.
         
@@ -62,36 +111,22 @@ class ImagenetteDataLoader:
         
         for image_path in self.image_paths:
             try:
-                image = Image.open(image_path)
-                
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                
-                if self.target_size is not None:
-                    image = image.resize(self.target_size, Image.Resampling.LANCZOS)
-                
-                image_array = cp.array(image)
-                image_array = cp.transpose(image_array, (2, 0, 1))
-                
-                images.append(image_array)
+                images.append(self.load_image(image_path=image_path, normalize=normalize))
             except Exception as e:
                 print(f"Error loading image {image_path}: {e}")
                 continue
         
         images = cp.stack(images, axis=0)
-        labels = cp.array(self.labels[:len(images)])
-
-        num_samples = len(labels)
-        zeros = cp.zeros(shape=(num_samples, 10), dtype=int)
-        zeros[cp.arange(num_samples), labels.flatten()] = 1
-        labels = zeros
-        
-        if normalize:
-            images = images / cp.max(images)
+        labels = self.encode_labels(self.labels[:len(images)], one_hot=True)
 
         return images, labels
     
-    def load_batch(self, indices: List[int]) -> Tuple[cp.ndarray, cp.ndarray]:
+    def load_batch(
+        self,
+        indices: List[int],
+        normalize: bool = False,
+        one_hot: bool = True
+    ) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load a batch of images by their indices.
         
@@ -109,17 +144,7 @@ class ImagenetteDataLoader:
         for idx in indices:
             try:
                 image_path = self.image_paths[idx]
-                image = Image.open(image_path)
-                
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                
-                if self.target_size is not None:
-                    image = image.resize(self.target_size, Image.Resampling.LANCZOS)
-                
-                image_array = cp.array(image)
-                image_array = cp.transpose(image_array, (2, 0, 1))
-                
+                image_array = self.load_image(image_path=image_path, normalize=normalize)
                 batch_images.append(image_array)
                 batch_labels.append(self.labels[idx])
             except Exception as e:
@@ -127,9 +152,44 @@ class ImagenetteDataLoader:
                 continue
         
         batch_images = cp.stack(batch_images, axis=0)
-        batch_labels = cp.array(batch_labels)
+        batch_labels = self.encode_labels(batch_labels, one_hot=one_hot)
         
         return batch_images, batch_labels
+
+    def iter_batches(
+        self,
+        batch_size: int,
+        normalize: bool = False,
+        one_hot: bool = True,
+        shuffle: bool = False
+    ) -> Iterator[Tuple[cp.ndarray, cp.ndarray]]:
+        """
+        Iterate over the dataset one batch at a time.
+
+        Args:
+            batch_size: Number of samples per batch
+            normalize: Whether to scale image pixels to the [0, 1] range
+            one_hot: Whether to one-hot encode labels
+            shuffle: Whether to shuffle sample order before iteration
+
+        Yields:
+            Tuples of (batch_images, batch_labels)
+        """
+        indices: List[int] = list(range(len(self)))
+
+        if shuffle:
+            random.shuffle(indices)
+
+        for start in range(0, len(indices), batch_size):
+            batch_indices = indices[start:start + batch_size]
+            if not batch_indices:
+                continue
+
+            yield self.load_batch(
+                indices=batch_indices,
+                normalize=normalize,
+                one_hot=one_hot
+            )
     
     def __len__(self) -> int:
         """Return the total number of images in the dataset."""
@@ -156,7 +216,7 @@ class ImagenetteDataLoader:
             if self.target_size is not None:
                 image = image.resize(self.target_size, Image.Resampling.LANCZOS)
             
-            image_array = cp.array(image)
+            image_array = cp.asarray(image, dtype=cp.float32)
             return tuple(cp.transpose(image_array, (2, 0, 1)).shape)
         except Exception as e:
             print(f"Error getting image shape: {e}")
