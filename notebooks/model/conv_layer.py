@@ -14,6 +14,7 @@ class ConvLayer:
         num_filters: int,
         kernel_height: int,
         kernel_width: int,
+        num_channels: int,
         padding: int,
         stride: int
     ) -> None:
@@ -24,16 +25,18 @@ class ConvLayer:
             num_filters: Number of filters (output channels)
             kernel_height: Height of the convolution kernel
             kernel_width: Width of the convolution kernel
+            num_channels: Number of input channels
             padding: Zero-padding to apply to input
             stride: Stride of the convolution operation
         """
         self.num_filters: int = num_filters
         self.kernel_height: int = kernel_height
         self.kernel_width: int = kernel_width
+        self.num_channels: int = num_channels
         self.padding: int = padding
         self.stride: int = stride
         self.filters: cp.ndarray = cp.random.random(
-            size=(num_filters, 3, kernel_height, kernel_width)
+            size=(num_filters, num_channels, kernel_height, kernel_width)
         )
 
     @staticmethod
@@ -43,7 +46,7 @@ class ConvLayer:
         
         Args:
             definition: Dictionary with 'num_filters', 'kernel_height', 'kernel_width',
-                       'padding', and 'stride' keys
+                       'num_channels', 'padding', and 'stride' keys
         
         Returns:
             Initialized ConvLayer instance
@@ -52,6 +55,7 @@ class ConvLayer:
             num_filters=definition.get("num_filters"),
             kernel_height=definition.get("kernel_height"),
             kernel_width=definition.get("kernel_width"),
+            num_channels=definition.get("num_channels"),
             padding=definition.get("padding"),
             stride=definition.get("stride")
         )
@@ -87,7 +91,7 @@ class ConvLayer:
         )
         return filters_matrix
     
-    def im2col(self, x_batch: cp.ndarray) -> Tuple[cp.ndarray, int, int]:
+    def im2col(self, input: cp.ndarray) -> Tuple[cp.ndarray, int, int]:
         """
         Convert image batch to column matrix using im2col algorithm.
         
@@ -109,10 +113,10 @@ class ConvLayer:
         num_channels: int
         img_height: int
         img_width: int
-        num_samples, num_channels, img_height, img_width = x_batch.shape
+        num_samples, num_channels, img_height, img_width = input.shape
 
         x_padded: cp.ndarray = cp.pad(
-            x_batch,
+            input,
             ((0, 0), (0, 0), (self.padding, self.padding), (self.padding, self.padding))
         )
 
@@ -160,7 +164,7 @@ class ConvLayer:
         """
         return cp.maximum(0, input)
 
-    def forward(self, x_batch: cp.ndarray) -> cp.ndarray:
+    def forward(self, input: cp.ndarray) -> cp.ndarray:
         """
         Forward pass: compute convolution operation.
         
@@ -168,7 +172,7 @@ class ConvLayer:
         with flattened filters, and reshapes output to standard 4D format.
         
         Args:
-            x_batch: Input batch of shape (batch_size, num_channels, height, width)
+            input: Input batch of shape (batch_size, num_channels, height, width)
             
         Returns:
             Output feature maps of shape (batch_size, num_filters, output_height, output_width)
@@ -176,10 +180,10 @@ class ConvLayer:
         cols: cp.ndarray
         out_h: int
         out_w: int
-        cols, out_h, out_w = self.im2col(x_batch)
+        cols, out_h, out_w = self.im2col(input)
         
         output: cp.ndarray = cols @ self.flatten_filters().T
-        num_samples: int = x_batch.shape[0]
+        num_samples: int = input.shape[0]
         output = output.reshape(num_samples, out_h, out_w, self.num_filters)
         output = output.transpose(0, 3, 1, 2)
         
