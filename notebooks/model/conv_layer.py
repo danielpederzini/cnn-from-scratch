@@ -104,17 +104,21 @@ class ConvLayer:
         )
         return filters_matrix
 
-    def clip_grad(self, grad: cp.ndarray, clip_value: float = 10.0) -> cp.ndarray:
+    def clip_grad(self, grad: cp.ndarray, clip_value: Optional[float] = None) -> cp.ndarray:
         """
-        Clip gradient to prevent explosion using L2 norm.
+        Optionally clip gradient using L2 norm.
 
         Args:
             grad: Gradient array to clip
-            clip_value: Maximum allowed L2 norm for the gradient
+            clip_value: Maximum allowed L2 norm for the gradient. If None,
+                clipping is disabled.
 
         Returns:
-            Clipped gradient array
+            Gradient array, clipped only when a clip value is provided
         """
+        if clip_value is None:
+            return grad
+
         norm = cp.linalg.norm(grad)
         if norm > clip_value:
             grad = grad * (clip_value / norm)
