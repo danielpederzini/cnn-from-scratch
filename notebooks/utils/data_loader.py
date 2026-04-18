@@ -59,7 +59,7 @@ class ImagenetteDataLoader:
                 self.image_paths.append(str(image_path))
                 self.labels.append(self.class_to_idx[class_name])
 
-    def load_image(self, image_path: str, normalize: bool = False) -> cp.ndarray:
+    def load_image(self, image_path: str, normalize: bool = False, aug_chance: float = 0, flip_chance: float = 0) -> cp.ndarray:
         """
         Load a single image into GPU memory.
 
@@ -75,6 +75,14 @@ class ImagenetteDataLoader:
 
         if image.mode != 'RGB':
             image = image.convert('RGB')
+
+        if random.random() < aug_chance:
+            if random.random() < flip_chance:
+                image = image.transpose(Image.FLIP_LEFT_RIGHT)
+            else:
+                width, height = image.size
+                left, upper, right, lower = width/8, height/8, 3*width/8, 3*height/8
+                image = image.crop((left, upper, right, lower))
 
         if self.target_size is not None:
             image = image.resize(self.target_size, Image.Resampling.LANCZOS)
@@ -108,7 +116,7 @@ class ImagenetteDataLoader:
         encoded[cp.arange(len(labels)), label_array] = 1.0
         return encoded
     
-    def load_images(self, normalize: bool = False) -> Tuple[cp.ndarray, cp.ndarray]:
+    def load_images(self, normalize: bool = False, aug_chance: float = 0, flip_chance: float = 0) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load all images from the dataset.
         
@@ -121,7 +129,7 @@ class ImagenetteDataLoader:
         
         for image_path in self.image_paths:
             try:
-                images.append(self.load_image(image_path=image_path, normalize=normalize))
+                images.append(self.load_image(image_path=image_path, normalize=normalize, aug_chance=aug_chance, flip_chance=flip_chance))
             except Exception as e:
                 print(f"Error loading image {image_path}: {e}")
                 continue
@@ -135,14 +143,19 @@ class ImagenetteDataLoader:
         self,
         indices: List[int],
         normalize: bool = False,
-        one_hot: bool = True
+        one_hot: bool = True,
+        aug_chance: float = 0,
+        flip_chance: float = 0
     ) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load a batch of images by their indices.
         
         Args:
             indices: List of image indices to load
-            
+            normalize: Whether to scale image pixels to the [0, 1] range
+            one_hot: Whether to one-hot encode labels
+            aug_chance: Probability of applying augmentation
+            flip_chance: Probability of applying horizontal flip during augmentation
         Returns:
             Tuple of (batch_images, batch_labels) where:
             - batch_images: numpy array of shape (batch_size, channels, height, width)
@@ -154,7 +167,7 @@ class ImagenetteDataLoader:
         for idx in indices:
             try:
                 image_path = self.image_paths[idx]
-                image_array = self.load_image(image_path=image_path, normalize=normalize)
+                image_array = self.load_image(image_path=image_path, normalize=normalize, aug_chance=aug_chance, flip_chance=flip_chance)
                 batch_images.append(image_array)
                 batch_labels.append(self.labels[idx])
             except Exception as e:
@@ -171,7 +184,9 @@ class ImagenetteDataLoader:
         batch_size: int,
         normalize: bool = False,
         one_hot: bool = True,
-        shuffle: bool = False
+        shuffle: bool = False,
+        aug_chance: float = 0,
+        flip_chance: float = 0
     ) -> Iterator[Tuple[cp.ndarray, cp.ndarray]]:
         """
         Iterate over the dataset one batch at a time.
@@ -198,7 +213,9 @@ class ImagenetteDataLoader:
             yield self.load_batch(
                 indices=batch_indices,
                 normalize=normalize,
-                one_hot=one_hot
+                one_hot=one_hot,
+                aug_chance=aug_chance,
+                flip_chance=flip_chance
             )
 
     def get_normalization_stats(self) -> Tuple[cp.ndarray, cp.ndarray]:
