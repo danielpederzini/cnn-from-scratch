@@ -34,6 +34,14 @@ class ImagenetteDataLoader:
                                if os.path.isdir(self.split_path / d)])
         self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(self.classes)}
         self.num_classes = len(self.classes)
+        self.channel_mean: cp.ndarray = cp.asarray(
+            [0.485, 0.456, 0.406],
+            dtype=cp.float32
+        ).reshape(3, 1, 1)
+        self.channel_std: cp.ndarray = cp.asarray(
+            [0.229, 0.224, 0.225],
+            dtype=cp.float32
+        ).reshape(3, 1, 1)
         
         self.image_paths = []
         self.labels = []
@@ -57,7 +65,8 @@ class ImagenetteDataLoader:
 
         Args:
             image_path: Path to the image file
-            normalize: Whether to scale pixel values into the [0, 1] range
+            normalize: Whether to scale pixel values into the [0, 1] range and
+                apply per-channel mean/std normalization
 
         Returns:
             Image tensor of shape (channels, height, width)
@@ -72,9 +81,10 @@ class ImagenetteDataLoader:
 
         image_array = cp.asarray(image, dtype=cp.float32)
         image_array = cp.transpose(image_array, (2, 0, 1))
+        image_array /= 255.0
 
         if normalize:
-            image_array /= 255.0
+            image_array = (image_array - self.channel_mean) / self.channel_std
 
         return image_array
 
@@ -190,6 +200,15 @@ class ImagenetteDataLoader:
                 normalize=normalize,
                 one_hot=one_hot
             )
+
+    def get_normalization_stats(self) -> Tuple[cp.ndarray, cp.ndarray]:
+        """
+        Return the per-channel normalization statistics used by the loader.
+
+        Returns:
+            Tuple of (mean, std), each shaped as (3, 1, 1)
+        """
+        return self.channel_mean, self.channel_std
     
     def __len__(self) -> int:
         """Return the total number of images in the dataset."""
