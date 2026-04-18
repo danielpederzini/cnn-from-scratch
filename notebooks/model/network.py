@@ -125,10 +125,11 @@ class Network:
             output_error: Error gradient from loss function
             batch_size: Size of the batch
         """
-        accumulated_grad = output_error
+        gradients = [output_error]
         
         for layer in reversed(self.layers):
-            accumulated_grad = layer.backward(output_error=accumulated_grad, batch_size=batch_size)
+            gradient = layer.backward(output_error=gradients[-1], batch_size=batch_size)
+            gradients.append(gradient)
 
     def update_parameters(self, learning_rate: float) -> None:
         """
@@ -138,5 +139,8 @@ class Network:
             learning_rate: Learning rate for gradient descent update
         """
         for layer in self.layers:
-            layer.weights -= layer.w_grad * learning_rate
-            layer.biases -= layer.b_grad * learning_rate
+            layer.update_parameters(learning_rate=learning_rate)
+
+    def cce_loss(self, y_pred: cp.ndarray, y_true: cp.ndarray, epsilon=1e-15) -> cp.ndarray:
+        y_pred = cp.clip(y_pred, epsilon, 1. - epsilon)
+        return -cp.mean(cp.sum(y_true * cp.log(y_pred), axis=1))

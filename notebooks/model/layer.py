@@ -107,3 +107,16 @@ class Layer:
         self.b_grad = self.clip_grad(grad=cp.mean(output_error, axis=0))
         
         return output_error @ self.weights.T
+
+    def update_parameters(self, learning_rate: float) -> None:
+        """
+        Update this layer's trainable parameters using the stored gradients.
+
+        Args:
+            learning_rate: Learning rate for gradient descent update
+        """
+        if self.w_grad is not None:
+            self.weights -= self.w_grad * learning_rate
+
+        if self.b_grad is not None:
+            self.biases -= self.b_grad * learning_rate

@@ -1,5 +1,5 @@
 import cupy as cp
-from typing import Dict, Any
+from typing import Optional, Dict, Any
 
 
 class FlattenLayer:
@@ -16,7 +16,7 @@ class FlattenLayer:
         
         This layer has no parameters to initialize.
         """
-        pass
+        self.last_input_shape: Optional[tuple[int, ...]] = None
     
     @staticmethod
     def from_definition(definition: Dict[str, Any]) -> "FlattenLayer":
@@ -54,7 +54,33 @@ class FlattenLayer:
         Returns:
             Flattened output array of shape (batch_size, flattened_features)
         """
+        self.last_input_shape = input.shape
         batch_size: int = input.shape[0]
         flattened_features: int = int(cp.prod(cp.array(input.shape[1:])).item())
         
         return input.reshape(batch_size, flattened_features)
+
+    def backward(self, output_error: cp.ndarray, batch_size: int) -> cp.ndarray:
+        """
+        Backward pass: restore the original tensor shape before flattening.
+
+        Args:
+            output_error: Gradient from the next layer of shape
+                (batch_size, flattened_features)
+            batch_size: Size of the batch for gradient averaging
+
+        Returns:
+            Gradient with respect to the input of shape
+            (batch_size, ...)
+        """
+        del batch_size
+        return output_error.reshape(self.last_input_shape)
+
+    def update_parameters(self, learning_rate: float) -> None:
+        """
+        No-op update because this layer has no trainable parameters.
+
+        Args:
+            learning_rate: Learning rate for gradient descent update
+        """
+        del learning_rate
