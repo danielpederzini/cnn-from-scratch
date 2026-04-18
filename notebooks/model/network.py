@@ -6,6 +6,7 @@ from .sigmoid_layer import SigmoidLayer
 from .softmax_layer import SoftmaxLayer
 from .conv_layer import ConvLayer
 from .max_pool_layer import MaxPoolLayer
+from .flatten_layer import FlattenLayer
 
 class Network:
     """
@@ -19,6 +20,7 @@ class Network:
     LAYER_TYPES: dict[str, type] = {
         "Conv": ConvLayer,
         "MaxPool": MaxPoolLayer,
+        "Flatten": FlattenLayer,
         "ReLU": ReluLayer,
         "Sigmoid": SigmoidLayer,
         "Softmax": SoftmaxLayer,
