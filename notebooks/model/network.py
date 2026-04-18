@@ -3,6 +3,7 @@ import cupy as cp
 from .layer import Layer
 from .relu_layer import ReluLayer
 from .sigmoid_layer import SigmoidLayer
+from .softmax_layer import SoftmaxLayer
 from .conv_layer import ConvLayer
 from .max_pool_layer import MaxPoolLayer
 
@@ -20,6 +21,7 @@ class Network:
         "MaxPool": MaxPoolLayer,
         "ReLU": ReluLayer,
         "Sigmoid": SigmoidLayer,
+        "Softmax": SoftmaxLayer,
     }
     
     def __init__(self, layer_definitions: list[dict]) -> None:
