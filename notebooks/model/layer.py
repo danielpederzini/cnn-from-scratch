@@ -121,15 +121,15 @@ class Layer:
         
         return output_error @ self.weights.T
 
-    def update_parameters(self, learning_rate: float) -> None:
+    def update_parameters(self, learning_rate: float, weight_decay_lambda: float = 0.0) -> None:
         """
         Update this layer's trainable parameters using the stored gradients.
 
         Args:
             learning_rate: Learning rate for gradient descent update
+            weight_decay_lambda: Regularization parameter for weight decay
         """
         if self.w_grad is not None:
-            self.weights -= self.w_grad * learning_rate
-
+            self.weights -= learning_rate * (self.w_grad + weight_decay_lambda * self.weights)
         if self.b_grad is not None:
             self.biases -= self.b_grad * learning_rate

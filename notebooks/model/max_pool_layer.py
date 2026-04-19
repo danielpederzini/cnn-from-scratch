@@ -171,11 +171,12 @@ class MaxPoolLayer:
 
         return input_error
 
-    def update_parameters(self, learning_rate: float) -> None:
+    def update_parameters(self, learning_rate: float, weight_decay_lambda: float) -> None:
         """
         No-op update because this layer has no trainable parameters.
 
         Args:
             learning_rate: Learning rate for gradient descent update
+            weight_decay_lambda: Weight decay coefficient for regularization
         """
-        del learning_rate
+        del learning_rate, weight_decay_lambda

@@ -241,15 +241,16 @@ class ConvLayer:
         input_cols_grad: cp.ndarray = output_error_reshaped @ self.flatten_filters()
         return self.col2im(input_cols_grad=input_cols_grad, input_shape=self.last_input_shape)
 
-    def update_parameters(self, learning_rate: float) -> None:
+    def update_parameters(self, learning_rate: float, weight_decay_lambda: float = 0.0) -> None:
         """
         Update this layer's filters using the stored gradients.
 
         Args:
             learning_rate: Learning rate for gradient descent update
+            weight_decay_lambda: Regularization parameter for weight decay
         """
         if self.w_grad is not None:
-            self.filters -= self.w_grad * learning_rate
+            self.filters -= learning_rate * (self.w_grad + weight_decay_lambda * self.filters)
 
         if self.b_grad is not None:
             self.biases -= self.b_grad * learning_rate

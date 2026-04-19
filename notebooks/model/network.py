@@ -91,12 +91,13 @@ class Network:
         
         print("\n".join(description_lines))
 
-    def forward(self, input) -> list:
+    def forward(self, input: cp.ndarray, print_shapes: bool = False) -> list:
         """
         Forward pass through all layers.
         
         Args:
             input: Input tensor expected by the first layer in the network
+            print_shapes: Whether to print the shape of the output at each layer
             
         Returns:
             List of output arrays from each layer
@@ -106,11 +107,13 @@ class Network:
         for layer in self.layers:
             output = layer.forward(input=input)
             outputs.append(output)
+            if print_shapes:
+                print(f"Layer {self.layers.index(layer)} Output Shape: {output.shape}")
             input = output
             
         return outputs
 
-    def backward(self, output_error, batch_size: int) -> None:
+    def backward(self, output_error: cp.ndarray, batch_size: int) -> None:
         """
         Backward pass through all layers (reverse order).
         
@@ -126,15 +129,16 @@ class Network:
             gradient = layer.backward(output_error=gradients[-1], batch_size=batch_size)
             gradients.append(gradient)
 
-    def update_parameters(self, learning_rate: float) -> None:
+    def update_parameters(self, learning_rate: float, weight_decay_lambda: float = 0.0) -> None:
         """
         Update all layer parameters using computed gradients.
         
         Args:
             learning_rate: Learning rate for gradient descent update
+            weight_decay_lambda: Regularization parameter for weight decay
         """
         for layer in self.layers:
-            layer.update_parameters(learning_rate=learning_rate)
+            layer.update_parameters(learning_rate=learning_rate, weight_decay_lambda=weight_decay_lambda)
 
     def train(self) -> None:
         """

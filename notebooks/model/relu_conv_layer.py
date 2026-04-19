@@ -84,14 +84,15 @@ class ReluConvLayer(ConvLayer):
         relu_grad: cp.ndarray = output_error * (self.last_linear_output > 0)
         return super().backward(output_error=relu_grad, batch_size=batch_size)
 
-    def update_parameters(self, learning_rate: float) -> None:
+    def update_parameters(self, learning_rate: float, weight_decay_lambda: float = 0.0) -> None:
         """
         Update convolution parameters.
 
         Args:
             learning_rate: Learning rate for gradient descent update
+            weight_decay_lambda: Regularization parameter for weight decay
         """
-        super().update_parameters(learning_rate=learning_rate)
+        super().update_parameters(learning_rate=learning_rate, weight_decay_lambda=weight_decay_lambda)
 
     def parameter_count(self) -> int:
         """
