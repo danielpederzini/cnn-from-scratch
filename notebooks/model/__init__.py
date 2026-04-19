@@ -7,7 +7,7 @@ from .conv_layer import ConvLayer
 from .relu_conv_layer import ReluConvLayer
 from .res_conv_layer import ResConvLayer
 from .max_pool_layer import MaxPoolLayer
-from .global_avg_pool_layer import GlobalAvgPoolLayer, GlobalAvgPooLayer
+from .global_avg_pool_layer import GlobalAvgPoolLayer
 from .flatten_layer import FlattenLayer
 
 __all__ = ["Layer", "ReluLayer", "SigmoidLayer", "SoftmaxLayer", "Network", "ConvLayer", "ReluConvLayer", "ResConvLayer", "MaxPoolLayer", "GlobalAvgPoolLayer", "FlattenLayer"]
