@@ -1,7 +1,7 @@
 import cupy as cp
 from typing import Optional, Dict, Any
 from .relu_conv_layer import ReluConvLayer
-from .convolution_utils import im2col, col2im
+from .utils.convolution_utils import im2col, col2im
 
 
 class ResConvLayer(ReluConvLayer):

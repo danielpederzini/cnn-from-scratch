@@ -1,6 +1,6 @@
 import cupy as cp
 from typing import Optional, Tuple, Dict, Any
-from .convolution_utils import im2col, col2im
+from .utils.convolution_utils import im2col, col2im
 
 class ConvLayer:
     """
