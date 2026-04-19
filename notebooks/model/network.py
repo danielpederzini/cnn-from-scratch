@@ -5,7 +5,10 @@ from .relu_layer import ReluLayer
 from .sigmoid_layer import SigmoidLayer
 from .softmax_layer import SoftmaxLayer
 from .conv_layer import ConvLayer
+from .relu_conv_layer import ReluConvLayer
+from .res_conv_layer import ResConvLayer
 from .max_pool_layer import MaxPoolLayer
+from .global_avg_pool_layer import GlobalAvgPoolLayer
 from .flatten_layer import FlattenLayer
 
 class Network:
@@ -18,8 +21,12 @@ class Network:
     """
     
     LAYER_TYPES: dict[str, type] = {
-        "Conv": ConvLayer,
+        "Conv": ReluConvLayer,
+        "LinearConv": ConvLayer,
+        "ReluConv": ReluConvLayer,
+        "ResConv": ResConvLayer,
         "MaxPool": MaxPoolLayer,
+        "GlobalAvgPool": GlobalAvgPoolLayer,
         "Flatten": FlattenLayer,
         "ReLU": ReluLayer,
         "Sigmoid": SigmoidLayer,
@@ -83,6 +90,10 @@ class Network:
                 layer_params: int = int(weights_shape[0] * weights_shape[1] + biases_shape[0])
             elif hasattr(layer, 'filters'):
                 layer_params = int(cp.prod(cp.array(layer.filters.shape)).item() + layer.biases.shape[0])
+                if hasattr(layer, 'projection_filters') and layer.projection_filters is not None:
+                    layer_params += int(
+                        cp.prod(cp.array(layer.projection_filters.shape)).item() + layer.projection_biases.shape[0]
+                    )
             else:
                 layer_params = 0
             
