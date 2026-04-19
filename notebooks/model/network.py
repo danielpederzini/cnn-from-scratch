@@ -6,7 +6,7 @@ from .sigmoid_layer import SigmoidLayer
 from .softmax_layer import SoftmaxLayer
 from .conv_layer import ConvLayer
 from .relu_conv_layer import ReluConvLayer
-from .res_conv_layer import ResConvLayer
+from .res_block import ResBlock
 from .max_pool_layer import MaxPoolLayer
 from .global_avg_pool_layer import GlobalAvgPoolLayer
 from .flatten_layer import FlattenLayer
@@ -24,7 +24,7 @@ class Network:
         "Conv": ReluConvLayer,
         "LinearConv": ConvLayer,
         "ReluConv": ReluConvLayer,
-        "ResConv": ResConvLayer,
+        "ResBlock": ResBlock,
         "MaxPool": MaxPoolLayer,
         "GlobalAvgPool": GlobalAvgPoolLayer,
         "Flatten": FlattenLayer,
