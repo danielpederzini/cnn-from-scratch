@@ -77,7 +77,7 @@ class MaxPoolLayer:
         and reshapes output to standard 4D format.
         
         Args:
-            x_batch: Input batch of shape (batch_size, num_channels, height, width)
+            input: Input batch of shape (batch_size, num_channels, height, width)
             
         Returns:
             Output feature maps of shape (batch_size, num_channels, output_height, output_width)

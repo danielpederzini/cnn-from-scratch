@@ -101,9 +101,11 @@ class ConvLayer:
     def flatten_filters(self) -> cp.ndarray:
         """
         Flatten filters into a 2D matrix.
-        
-        Reshapes filters from shape (num_filters, 3, kernel_height, kernel_width)
-        to (num_filters, 3 * kernel_height * kernel_width) for matrix multiplication.
+
+        Reshapes filters from shape
+        (num_filters, num_channels, kernel_height, kernel_width) to
+        (num_filters, num_channels * kernel_height * kernel_width) for
+        matrix multiplication.
         
         Returns:
             Flattened filters matrix of shape (num_filters, num_channels * kernel_height * kernel_width)

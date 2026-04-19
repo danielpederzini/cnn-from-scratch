@@ -3,10 +3,10 @@ from typing import Optional, Dict, Any
 
 class Layer:
     """
-    Base layer class for neural network.
-    
-    Implements forward and backward pass for a fully connected layer with
-    optional activation function.
+    Base fully connected layer for the neural network.
+
+    Implements the shared linear transformation, gradient computation, and
+    parameter update logic used by dense layers.
     """
     
     def __init__(self, weights: cp.ndarray, biases: cp.ndarray) -> None:

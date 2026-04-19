@@ -1,3 +1,5 @@
+"""Model package exposing the neural-network building blocks used in the notebook."""
+
 from .layer import Layer
 from .relu_layer import ReluLayer
 from .sigmoid_layer import SigmoidLayer

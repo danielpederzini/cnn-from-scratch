@@ -8,9 +8,11 @@ import matplotlib.pyplot as plt
 
 class ImagenetteDataLoader:
     """
-    A data loader class for the imagenette dataset.
-    
-    Loads images and converts them to numpy arrays with shape (channels, height, width).
+    Data loader for the Imagenette dataset.
+
+    Loads images, optionally applies lightweight augmentation and
+    normalization, and returns CuPy tensors shaped as
+    (channels, height, width).
     """
     
     def __init__(self, root_path: str, split: str = 'train', target_size: Optional[Tuple[int, int]] = None):
@@ -20,7 +22,8 @@ class ImagenetteDataLoader:
         Args:
             root_path: Path to the imagenette2 directory
             split: Either 'train' or 'val'
-            target_size: Optional tuple (height, width) to resize images. If None, uses original size.
+            target_size: Optional tuple (width, height) used by PIL when resizing.
+                If None, the original image size is preserved.
         """
         self.root_path = Path(root_path)
         self.split = split
@@ -47,8 +50,8 @@ class ImagenetteDataLoader:
         self.labels = []
         self.collect_images()
     
-    def collect_images(self):
-        """Collect all image paths and their corresponding labels."""
+    def collect_images(self) -> None:
+        """Collect all image paths and their corresponding integer labels."""
         for class_name in self.classes:
             class_dir = self.split_path / class_name
             image_files = sorted([file for file in os.listdir(class_dir) 
@@ -67,6 +70,8 @@ class ImagenetteDataLoader:
             image_path: Path to the image file
             normalize: Whether to scale pixel values into the [0, 1] range and
                 apply per-channel mean/std normalization
+            aug_chance: Probability of applying one augmentation branch
+            flip_chance: Probability that the augmentation branch uses a horizontal flip
 
         Returns:
             Image tensor of shape (channels, height, width)
@@ -119,11 +124,16 @@ class ImagenetteDataLoader:
     def load_images(self, normalize: bool = False, aug_chance: float = 0, flip_chance: float = 0) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load all images from the dataset.
-        
+
+        Args:
+            normalize: Whether to apply per-channel normalization after scaling
+            aug_chance: Probability of applying augmentation to each image
+            flip_chance: Probability that augmentation uses a horizontal flip
+
         Returns:
             Tuple of (images, labels) where:
-            - images: numpy array of shape (num_samples, channels, height, width)
-            - labels: numpy array of class indices of shape (num_samples,)
+            - images: CuPy array of shape (num_samples, channels, height, width)
+            - labels: CuPy array of one-hot encoded labels of shape (num_samples, num_classes)
         """
         images = []
         
@@ -152,14 +162,15 @@ class ImagenetteDataLoader:
         
         Args:
             indices: List of image indices to load
-            normalize: Whether to scale image pixels to the [0, 1] range
+            normalize: Whether to apply per-channel normalization after scaling
             one_hot: Whether to one-hot encode labels
             aug_chance: Probability of applying augmentation
             flip_chance: Probability of applying horizontal flip during augmentation
+
         Returns:
             Tuple of (batch_images, batch_labels) where:
-            - batch_images: numpy array of shape (batch_size, channels, height, width)
-            - batch_labels: numpy array of class indices
+            - batch_images: CuPy array of shape (batch_size, channels, height, width)
+            - batch_labels: CuPy array of class indices or one-hot encoded labels
         """
         batch_images = []
         batch_labels = []
@@ -193,9 +204,11 @@ class ImagenetteDataLoader:
 
         Args:
             batch_size: Number of samples per batch
-            normalize: Whether to scale image pixels to the [0, 1] range
+            normalize: Whether to apply per-channel normalization after scaling
             one_hot: Whether to one-hot encode labels
             shuffle: Whether to shuffle sample order before iteration
+            aug_chance: Probability of applying augmentation to each loaded image
+            flip_chance: Probability that augmentation uses a horizontal flip
 
         Yields:
             Tuples of (batch_images, batch_labels)
@@ -235,7 +248,7 @@ class ImagenetteDataLoader:
         """Return the list of class names."""
         return self.classes
     
-    def get_image_shape(self, index: int = 0) -> Tuple[int, int, int]:
+    def get_image_shape(self, index: int = 0) -> Optional[Tuple[int, int, int]]:
         """
         Get the shape of an image (channels, height, width).
         
@@ -243,7 +256,7 @@ class ImagenetteDataLoader:
             index: Image index (default: first image)
             
         Returns:
-            Tuple of (channels, height, width)
+            Tuple of (channels, height, width), or None if the image cannot be loaded
         """
         try:
             image = Image.open(self.image_paths[index])
@@ -258,7 +271,7 @@ class ImagenetteDataLoader:
             print(f"Error getting image shape: {e}")
             return None
     
-    def plot_image(self, index: int, figsize: Tuple[int, int] = (6, 6)):
+    def plot_image(self, index: int, figsize: Tuple[int, int] = (6, 6)) -> None:
         """
         Plot a single image by its index.
         
@@ -284,7 +297,7 @@ class ImagenetteDataLoader:
         except Exception as e:
             print(f"Error plotting image at index {index}: {e}")
     
-    def plot_batch(self, indices: List[int], figsize: Tuple[int, int] = (12, 10)):
+    def plot_batch(self, indices: List[int], figsize: Tuple[int, int] = (12, 10)) -> None:
         """
         Plot multiple images in a grid.
         

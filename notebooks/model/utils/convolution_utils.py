@@ -1,3 +1,5 @@
+"""Shared CuPy helpers for converting convolution inputs to and from column form."""
+
 import cupy as cp
 from typing import Tuple
 

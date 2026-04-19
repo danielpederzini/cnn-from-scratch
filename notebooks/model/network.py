@@ -13,10 +13,9 @@ from .flatten_layer import FlattenLayer
 class Network:
     """
     Neural network composed of multiple layers.
-    
-    Implements forward pass, backward pass, and parameter updates for a
-    fully connected neural network with various activation functions and
-    convolutional layers.
+
+    Orchestrates forward passes, backward passes, and parameter updates for
+    networks built from dense, convolutional, pooling, and reshaping layers.
     """
     
     LAYER_TYPES: dict[str, type] = {
@@ -37,7 +36,7 @@ class Network:
         Args:
             layer_definitions: List of dictionaries defining each layer.
                 For fully connected layers: 'type' (layer type), 'input_size', and 'num_neurons'.
-                For convolutional layers: 'type': 'Conv', 'num_filters', 'kernel_height', 
+                For convolutional layers: 'type': 'Conv' or 'ReLUConv', 'num_filters', 'kernel_height', 
                 'kernel_width', 'num_channels', 'padding', and 'stride'.
                 For max pooling layers: 'type': 'MaxPool', 'pool_height', 'pool_width', and 'stride'.
         """
@@ -97,7 +96,7 @@ class Network:
         Forward pass through all layers.
         
         Args:
-            input: Input array of shape (batch_size, input_features)
+            input: Input tensor expected by the first layer in the network
             
         Returns:
             List of output arrays from each layer
@@ -154,5 +153,16 @@ class Network:
                 layer.eval()
 
     def cce_loss(self, y_pred: cp.ndarray, y_true: cp.ndarray, epsilon=1e-15) -> cp.ndarray:
+        """
+        Compute categorical cross-entropy loss.
+
+        Args:
+            y_pred: Predicted class probabilities of shape (batch_size, num_classes)
+            y_true: One-hot encoded target labels of shape (batch_size, num_classes)
+            epsilon: Small value used to avoid taking the log of zero
+
+        Returns:
+            Scalar mean categorical cross-entropy loss
+        """
         y_pred = cp.clip(y_pred, epsilon, 1. - epsilon)
         return -cp.mean(cp.sum(y_true * cp.log(y_pred), axis=1))
