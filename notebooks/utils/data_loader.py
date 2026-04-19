@@ -14,6 +14,19 @@ class ImagenetteDataLoader:
     normalization, and returns CuPy tensors shaped as
     (channels, height, width).
     """
+
+    IMAGENETTE_LABELS = {
+        'n01440764': 'Tench',
+        'n02102040': 'English Springer',
+        'n02979186': 'Cassette Player',
+        'n03000684': 'Chain Saw',
+        'n03028079': 'Church',
+        'n03394916': 'French Horn',
+        'n03417042': 'Garbage Truck',
+        'n03425413': 'Gas Pump',
+        'n03445777': 'Golf Ball',
+        'n03888257': 'Parachute',
+    }
     
     def __init__(self, root_path: str, split: str = 'train', target_size: Optional[Tuple[int, int]] = None):
         """
@@ -33,10 +46,18 @@ class ImagenetteDataLoader:
         if not self.split_path.exists():
             raise ValueError(f"Split path does not exist: {self.split_path}")
         
-        self.classes = sorted([d for d in os.listdir(self.split_path) 
-                               if os.path.isdir(self.split_path / d)])
-        self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(self.classes)}
-        self.num_classes = len(self.classes)
+        self.class_ids = sorted([
+            directory for directory in os.listdir(self.split_path)
+            if os.path.isdir(self.split_path / directory)
+        ])
+        self.class_to_idx = {
+            class_id: idx for idx, class_id in enumerate(self.class_ids)
+        }
+        self.classes = [
+            self.IMAGENETTE_LABELS.get(class_id, class_id)
+            for class_id in self.class_ids
+        ]
+        self.num_classes = len(self.class_ids)
         self.channel_mean: cp.ndarray = cp.asarray(
             [0.485, 0.456, 0.406],
             dtype=cp.float32
@@ -49,18 +70,38 @@ class ImagenetteDataLoader:
         self.image_paths = []
         self.labels = []
         self.collect_images()
+
+    def apply_augmentation(self, image: Image.Image, aug_chance: float = 0, flip_chance: float = 0) -> Image.Image:
+        """Apply lightweight augmentation to a PIL image."""
+        if random.random() >= aug_chance:
+            return image
+
+        if random.random() < flip_chance:
+            return image.transpose(Image.FLIP_LEFT_RIGHT)
+
+        width, height = image.size
+        crop_scale = random.uniform(0.75, 0.9)
+        crop_width = max(1, int(width * crop_scale))
+        crop_height = max(1, int(height * crop_scale))
+        max_left = max(0, width - crop_width)
+        max_upper = max(0, height - crop_height)
+        left = random.randint(0, max_left) if max_left > 0 else 0
+        upper = random.randint(0, max_upper) if max_upper > 0 else 0
+        right = left + crop_width
+        lower = upper + crop_height
+        return image.crop((left, upper, right, lower))
     
     def collect_images(self) -> None:
         """Collect all image paths and their corresponding integer labels."""
-        for class_name in self.classes:
-            class_dir = self.split_path / class_name
+        for class_id in self.class_ids:
+            class_dir = self.split_path / class_id
             image_files = sorted([file for file in os.listdir(class_dir) 
                                  if file.lower().endswith(('.jpg', '.jpeg', '.png'))])
             
             for image_file in image_files:
                 image_path = class_dir / image_file
                 self.image_paths.append(str(image_path))
-                self.labels.append(self.class_to_idx[class_name])
+                self.labels.append(self.class_to_idx[class_id])
 
     def load_image(self, image_path: str, normalize: bool = False, aug_chance: float = 0, flip_chance: float = 0) -> cp.ndarray:
         """
@@ -81,13 +122,11 @@ class ImagenetteDataLoader:
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
-        if random.random() < aug_chance:
-            if random.random() < flip_chance:
-                image = image.transpose(Image.FLIP_LEFT_RIGHT)
-            else:
-                width, height = image.size
-                left, upper, right, lower = width/8, height/8, 3*width/8, 3*height/8
-                image = image.crop((left, upper, right, lower))
+        image = self.apply_augmentation(
+            image=image,
+            aug_chance=aug_chance,
+            flip_chance=flip_chance
+        )
 
         if self.target_size is not None:
             image = image.resize(self.target_size, Image.Resampling.LANCZOS)
@@ -245,8 +284,12 @@ class ImagenetteDataLoader:
         return len(self.image_paths)
     
     def get_class_names(self) -> List[str]:
-        """Return the list of class names."""
+        """Return the list of human-readable class names."""
         return self.classes
+
+    def get_class_ids(self) -> List[str]:
+        """Return the original Imagenette synset folder names."""
+        return self.class_ids
     
     def get_image_shape(self, index: int = 0) -> Optional[Tuple[int, int, int]]:
         """
@@ -271,39 +314,57 @@ class ImagenetteDataLoader:
             print(f"Error getting image shape: {e}")
             return None
     
-    def plot_image(self, index: int, figsize: Tuple[int, int] = (6, 6)) -> None:
+    def plot_image(
+        self,
+        index: int,
+        figsize: Tuple[int, int] = (6, 6),
+        aug_chance: float = 0,
+        flip_chance: float = 0
+    ) -> None:
         """
         Plot a single image by its index.
         
         Args:
             index: Image index to plot
             figsize: Tuple of (width, height) for the figure size
+            aug_chance: Probability of applying augmentation before plotting
+            flip_chance: Probability that augmentation uses a horizontal flip
         """
         try:
             image = Image.open(self.image_paths[index])
             if image.mode != 'RGB':
                 image = image.convert('RGB')
+            image = self.apply_augmentation(image=image, aug_chance=aug_chance, flip_chance=flip_chance)
             if self.target_size is not None:
                 image = image.resize(self.target_size, Image.Resampling.LANCZOS)
             
             class_name = self.classes[self.labels[index]]
+            class_id = self.class_ids[self.labels[index]]
             
             plt.figure(figsize=figsize)
             plt.imshow(image)
-            plt.title(f"Class: {class_name} (Index: {index})")
+            plt.title(f"Class: {class_name} [{class_id}] (Index: {index})")
             plt.axis('off')
             plt.tight_layout()
             plt.show()
         except Exception as e:
             print(f"Error plotting image at index {index}: {e}")
     
-    def plot_batch(self, indices: List[int], figsize: Tuple[int, int] = (12, 10)) -> None:
+    def plot_batch(
+        self,
+        indices: List[int],
+        figsize: Tuple[int, int] = (12, 10),
+        aug_chance: float = 0,
+        flip_chance: float = 0
+    ) -> None:
         """
         Plot multiple images in a grid.
         
         Args:
             indices: List of image indices to plot
             figsize: Tuple of (width, height) for the figure size
+            aug_chance: Probability of applying augmentation before plotting
+            flip_chance: Probability that augmentation uses a horizontal flip
         """
         num_images = len(indices)
         cols = min(4, num_images)
@@ -320,12 +381,14 @@ class ImagenetteDataLoader:
                 image = Image.open(self.image_paths[idx])
                 if image.mode != 'RGB':
                     image = image.convert('RGB')
+                image = self.apply_augmentation(image=image, aug_chance=aug_chance, flip_chance=flip_chance)
                 if self.target_size is not None:
                     image = image.resize(self.target_size, Image.Resampling.LANCZOS)
                 
                 class_name = self.classes[self.labels[idx]]
+                class_id = self.class_ids[self.labels[idx]]
                 axes[i].imshow(image)
-                axes[i].set_title(f"{class_name}")
+                axes[i].set_title(f"{class_name}\n[{class_id}]")
                 axes[i].axis('off')
             except Exception as e:
                 print(f"Error plotting image at index {idx}: {e}")
