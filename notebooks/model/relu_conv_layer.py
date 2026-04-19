@@ -1,8 +1,6 @@
 import cupy as cp
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from .conv_layer import ConvLayer
-from .utils.network_utils import NetworkUtils
-
 
 class ReluConvLayer(ConvLayer):
     """
@@ -10,16 +8,26 @@ class ReluConvLayer(ConvLayer):
 
     Applies a linear convolution followed by ReLU.
     """
-
     def __init__(
-        self,
-        num_filters: int,
-        kernel_height: int,
-        kernel_width: int,
-        num_channels: int,
-        padding: int,
-        stride: int
+            self,
+            num_filters: int,
+            kernel_height: int,
+            kernel_width: int,
+            num_channels: int,
+            padding: int,
+            stride: int
     ) -> None:
+        """
+        Initialize the ReLU convolutional layer.
+
+        Args:
+            num_filters: Number of convolution filters (output channels)
+            kernel_height: Height of the convolution kernel
+            kernel_width: Width of the convolution kernel
+            num_channels: Number of input channels
+            padding: Zero-padding applied around the input
+            stride: Stride between adjacent convolution windows
+        """
         super().__init__(
             num_filters=num_filters,
             kernel_height=kernel_height,
@@ -28,15 +36,6 @@ class ReluConvLayer(ConvLayer):
             padding=padding,
             stride=stride
         )
-        self.bn_gamma: cp.ndarray = cp.ones((1, num_filters, 1, 1), dtype=cp.float32)
-        self.bn_beta: cp.ndarray = cp.zeros((1, num_filters, 1, 1), dtype=cp.float32)
-        self.bn_cache: Optional[Dict[str, Any]] = None
-        self.last_batch_norm_output: Optional[cp.ndarray] = None
-        self.bn_gamma_grad: Optional[cp.ndarray] = None
-        self.bn_beta_grad: Optional[cp.ndarray] = None
-        self.bn_running_mean: cp.ndarray = cp.zeros((1, num_filters, 1, 1), dtype=cp.float32)
-        self.bn_running_var: cp.ndarray = cp.ones((1, num_filters, 1, 1), dtype=cp.float32)
-        self.bn_momentum: float = 0.1
 
     @staticmethod
     def from_definition(definition: Dict[str, Any]) -> "ReluConvLayer":
@@ -69,18 +68,7 @@ class ReluConvLayer(ConvLayer):
             ReLU-activated convolution output
         """
         linear_output: cp.ndarray = super().forward(input=input)
-        batch_norm_output: cp.ndarray
-        batch_norm_output, self.bn_cache = NetworkUtils.batch_norm(
-            input=linear_output,
-            gamma=self.bn_gamma,
-            beta=self.bn_beta,
-            training=self.training,
-            running_mean=self.bn_running_mean,
-            running_var=self.bn_running_var,
-            momentum=self.bn_momentum
-        )
-        self.last_batch_norm_output = batch_norm_output
-        return cp.maximum(0, batch_norm_output)
+        return cp.maximum(0, linear_output)
 
     def backward(self, output_error: cp.ndarray, batch_size: int) -> cp.ndarray:
         """
@@ -93,53 +81,23 @@ class ReluConvLayer(ConvLayer):
         Returns:
             Gradient with respect to the input
         """
-        relu_grad: cp.ndarray = output_error * (self.last_batch_norm_output > 0)
-        batch_norm_input_grad: cp.ndarray
-        gamma_grad: cp.ndarray
-        beta_grad: cp.ndarray
-        batch_norm_input_grad, gamma_grad, beta_grad = NetworkUtils.batch_norm_backward(
-            output_error=relu_grad,
-            cache=self.bn_cache
-        )
-        self.bn_gamma_grad = self.clip_grad(gamma_grad)
-        self.bn_beta_grad = self.clip_grad(beta_grad)
-        return super().backward(output_error=batch_norm_input_grad, batch_size=batch_size)
+        relu_grad: cp.ndarray = output_error * (self.last_linear_output > 0)
+        return super().backward(output_error=relu_grad, batch_size=batch_size)
 
     def update_parameters(self, learning_rate: float) -> None:
         """
-        Update convolution and batch-normalization parameters.
+        Update convolution parameters.
 
         Args:
             learning_rate: Learning rate for gradient descent update
         """
         super().update_parameters(learning_rate=learning_rate)
 
-        if self.bn_gamma_grad is not None:
-            self.bn_gamma -= self.bn_gamma_grad * learning_rate
-
-        if self.bn_beta_grad is not None:
-            self.bn_beta -= self.bn_beta_grad * learning_rate
-
-    def train(self) -> None:
-        """
-        Put the layer in training mode.
-        """
-        super().train()
-
-    def eval(self) -> None:
-        """
-        Put the layer in evaluation mode.
-        """
-        super().eval()
-
     def parameter_count(self) -> int:
         """
-        Count convolution and batch-normalization parameters.
+        Count convolution parameters.
 
         Returns:
             Total number of trainable parameters
         """
-        return super().parameter_count() + int(
-            cp.prod(cp.array(self.bn_gamma.shape)).item()
-            + cp.prod(cp.array(self.bn_beta.shape)).item()
-        )
+        return super().parameter_count()

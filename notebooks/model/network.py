@@ -6,7 +6,6 @@ from .sigmoid_layer import SigmoidLayer
 from .softmax_layer import SoftmaxLayer
 from .conv_layer import ConvLayer
 from .relu_conv_layer import ReluConvLayer
-from .res_block import ResBlock
 from .max_pool_layer import MaxPoolLayer
 from .global_avg_pool_layer import GlobalAvgPoolLayer
 from .flatten_layer import FlattenLayer
@@ -21,10 +20,8 @@ class Network:
     """
     
     LAYER_TYPES: dict[str, type] = {
-        "Conv": ReluConvLayer,
-        "LinearConv": ConvLayer,
-        "ReluConv": ReluConvLayer,
-        "ResBlock": ResBlock,
+        "Conv": ConvLayer,
+        "ReLUConv": ReluConvLayer,
         "MaxPool": MaxPoolLayer,
         "GlobalAvgPool": GlobalAvgPoolLayer,
         "Flatten": FlattenLayer,
@@ -155,18 +152,6 @@ class Network:
         for layer in self.layers:
             if hasattr(layer, "eval"):
                 layer.eval()
-
-    def apply_weight_decay(self, learning_rate: float, weight_decay: float) -> None:
-        """
-        Apply decoupled weight decay to all trainable layers.
-
-        Args:
-            learning_rate: Current optimizer learning rate
-            weight_decay: Weight decay coefficient
-        """
-        for layer in self.layers:
-            if hasattr(layer, "apply_weight_decay"):
-                layer.apply_weight_decay(learning_rate=learning_rate, weight_decay=weight_decay)
 
     def cce_loss(self, y_pred: cp.ndarray, y_true: cp.ndarray, epsilon=1e-15) -> cp.ndarray:
         y_pred = cp.clip(y_pred, epsilon, 1. - epsilon)
