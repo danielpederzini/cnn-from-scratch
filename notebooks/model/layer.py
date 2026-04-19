@@ -56,9 +56,18 @@ class Layer:
         layer_type: str = type(self).__name__
         weights_shape: tuple = self.weights.shape
         biases_shape: tuple = self.biases.shape
-        layer_params: int = int(weights_shape[0] * weights_shape[1] + biases_shape[0])
+        layer_params: int = self.parameter_count()
         
         return f"{layer_type}\n  Weights Shape: {weights_shape} | Biases Shape: {biases_shape}\n  Parameters: {layer_params:,}"
+
+    def parameter_count(self) -> int:
+        """
+        Count this layer's trainable parameters.
+
+        Returns:
+            Total number of trainable parameters
+        """
+        return int(self.weights.shape[0] * self.weights.shape[1] + self.biases.shape[0])
         
     def clip_grad(self, grad: cp.ndarray, clip_value: Optional[float] = None) -> cp.ndarray:
         """

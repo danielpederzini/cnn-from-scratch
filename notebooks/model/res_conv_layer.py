@@ -130,6 +130,23 @@ class ResConvLayer(ReluConvLayer):
         shortcut_type: str = "identity or 1x1 projection"
         return super().describe() + f"\n  Batch Norm: enabled\n  Shortcut: {shortcut_type}"
 
+    def parameter_count(self) -> int:
+        """
+        Count main-path, batch-normalization, and projection parameters.
+
+        Returns:
+            Total number of trainable parameters
+        """
+        layer_params: int = super().parameter_count()
+
+        if self.projection_filters is not None:
+            layer_params += int(
+                cp.prod(cp.array(self.projection_filters.shape)).item()
+                + self.projection_biases.shape[0]
+            )
+
+        return layer_params
+
     def forward(self, input: cp.ndarray) -> cp.ndarray:
         """
         Forward pass: ReLU convolution plus residual shortcut.

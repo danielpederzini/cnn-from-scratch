@@ -84,9 +84,18 @@ class ConvLayer:
         layer_type: str = type(self).__name__
         filters_shape: tuple = self.filters.shape
         biases_shape: tuple = self.biases.shape
-        layer_params: int = int(cp.prod(cp.array(filters_shape)).item() + biases_shape[0])
+        layer_params: int = self.parameter_count()
         
         return f"{layer_type}\n  Filters Shape: {filters_shape} | Biases Shape: {biases_shape}\n  Parameters: {layer_params:,}"
+
+    def parameter_count(self) -> int:
+        """
+        Count this layer's trainable parameters.
+
+        Returns:
+            Total number of trainable parameters
+        """
+        return int(cp.prod(cp.array(self.filters.shape)).item() + self.biases.shape[0])
 
 
     def flatten_filters(self) -> cp.ndarray:

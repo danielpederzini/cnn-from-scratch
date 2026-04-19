@@ -40,6 +40,15 @@ class FlattenLayer:
         """
         layer_type: str = type(self).__name__
         return f"{layer_type}\n  Parameters: 0"
+
+    def parameter_count(self) -> int:
+        """
+        Count this layer's trainable parameters.
+
+        Returns:
+            Zero because flattening has no trainable parameters
+        """
+        return 0
     
     def forward(self, input: cp.ndarray) -> cp.ndarray:
         """

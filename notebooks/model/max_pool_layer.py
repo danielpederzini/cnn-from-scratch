@@ -60,6 +60,15 @@ class MaxPoolLayer:
         
         return f"{layer_type}\n  Pool Shape: {pool_shape} | Stride: {self.stride}"
 
+    def parameter_count(self) -> int:
+        """
+        Count this layer's trainable parameters.
+
+        Returns:
+            Zero because max pooling has no trainable parameters
+        """
+        return 0
+
     def forward(self, input: cp.ndarray) -> cp.ndarray:
         """
         Forward pass: compute max pooling operation.

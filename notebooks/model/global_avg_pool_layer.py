@@ -40,6 +40,15 @@ class GlobalAvgPoolLayer:
         layer_type: str = type(self).__name__
         return f"{layer_type}\n  Output Shape: (batch_size, channels, 1, 1)"
 
+    def parameter_count(self) -> int:
+        """
+        Count this layer's trainable parameters.
+
+        Returns:
+            Zero because global average pooling has no trainable parameters
+        """
+        return 0
+
     def forward(self, input: cp.ndarray) -> cp.ndarray:
         """
         Forward pass: average each channel over its spatial dimensions.

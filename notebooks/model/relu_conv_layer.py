@@ -112,3 +112,15 @@ class ReluConvLayer(ConvLayer):
 
         if self.bn_beta_grad is not None:
             self.bn_beta -= self.bn_beta_grad * learning_rate
+
+    def parameter_count(self) -> int:
+        """
+        Count convolution and batch-normalization parameters.
+
+        Returns:
+            Total number of trainable parameters
+        """
+        return super().parameter_count() + int(
+            cp.prod(cp.array(self.bn_gamma.shape)).item()
+            + cp.prod(cp.array(self.bn_beta.shape)).item()
+        )
