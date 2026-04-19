@@ -34,6 +34,9 @@ class ReluConvLayer(ConvLayer):
         self.last_batch_norm_output: Optional[cp.ndarray] = None
         self.bn_gamma_grad: Optional[cp.ndarray] = None
         self.bn_beta_grad: Optional[cp.ndarray] = None
+        self.bn_running_mean: cp.ndarray = cp.zeros((1, num_filters, 1, 1), dtype=cp.float32)
+        self.bn_running_var: cp.ndarray = cp.ones((1, num_filters, 1, 1), dtype=cp.float32)
+        self.bn_momentum: float = 0.1
 
     @staticmethod
     def from_definition(definition: Dict[str, Any]) -> "ReluConvLayer":
@@ -70,7 +73,11 @@ class ReluConvLayer(ConvLayer):
         batch_norm_output, self.bn_cache = NetworkUtils.batch_norm(
             input=linear_output,
             gamma=self.bn_gamma,
-            beta=self.bn_beta
+            beta=self.bn_beta,
+            training=self.training,
+            running_mean=self.bn_running_mean,
+            running_var=self.bn_running_var,
+            momentum=self.bn_momentum
         )
         self.last_batch_norm_output = batch_norm_output
         return cp.maximum(0, batch_norm_output)
@@ -112,6 +119,18 @@ class ReluConvLayer(ConvLayer):
 
         if self.bn_beta_grad is not None:
             self.bn_beta -= self.bn_beta_grad * learning_rate
+
+    def train(self) -> None:
+        """
+        Put the layer in training mode.
+        """
+        super().train()
+
+    def eval(self) -> None:
+        """
+        Put the layer in evaluation mode.
+        """
+        super().eval()
 
     def parameter_count(self) -> int:
         """

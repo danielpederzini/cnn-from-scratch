@@ -52,6 +52,7 @@ class ConvLayer:
         self.last_output_shape: Optional[Tuple[int, int]] = None
         self.w_grad: Optional[cp.ndarray] = None
         self.b_grad: Optional[cp.ndarray] = None
+        self.training: bool = True
 
     @staticmethod
     def from_definition(definition: Dict[str, Any]) -> "ConvLayer":
@@ -251,3 +252,25 @@ class ConvLayer:
 
         if self.b_grad is not None:
             self.biases -= self.b_grad * learning_rate
+
+    def train(self) -> None:
+        """
+        Put the layer in training mode.
+        """
+        self.training = True
+
+    def eval(self) -> None:
+        """
+        Put the layer in evaluation mode.
+        """
+        self.training = False
+
+    def apply_weight_decay(self, learning_rate: float, weight_decay: float) -> None:
+        """
+        Apply decoupled weight decay to convolution filters.
+
+        Args:
+            learning_rate: Current optimizer learning rate
+            weight_decay: Weight decay coefficient
+        """
+        self.filters *= (1.0 - learning_rate * weight_decay)

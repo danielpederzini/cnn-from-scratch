@@ -60,6 +60,7 @@ class ResBlock:
         self.kernel_height: int = kernel_height
         self.kernel_width: int = kernel_width
         self.padding: int = padding
+        self.training: bool = True
 
         self.conv1: ReluConvLayer = ReluConvLayer(
             num_filters=num_filters,
@@ -83,6 +84,9 @@ class ResBlock:
         self.bn2_cache: Optional[Dict[str, Any]] = None
         self.bn2_gamma_grad: Optional[cp.ndarray] = None
         self.bn2_beta_grad: Optional[cp.ndarray] = None
+        self.bn2_running_mean: cp.ndarray = cp.zeros((1, num_filters, 1, 1), dtype=cp.float32)
+        self.bn2_running_var: cp.ndarray = cp.ones((1, num_filters, 1, 1), dtype=cp.float32)
+        self.bn_momentum: float = 0.1
         self.last_block_output: Optional[cp.ndarray] = None
         self.last_input_shape: Optional[tuple[int, int, int, int]] = None
 
@@ -92,6 +96,8 @@ class ResBlock:
         self.shortcut_bn_cache: Optional[Dict[str, Any]] = None
         self.shortcut_bn_gamma_grad: Optional[cp.ndarray] = None
         self.shortcut_bn_beta_grad: Optional[cp.ndarray] = None
+        self.shortcut_bn_running_mean: Optional[cp.ndarray] = None
+        self.shortcut_bn_running_var: Optional[cp.ndarray] = None
 
         if stride != 1 or num_channels != num_filters:
             self.shortcut_projection = ConvLayer(
@@ -104,6 +110,8 @@ class ResBlock:
             )
             self.shortcut_bn_gamma = cp.ones((1, num_filters, 1, 1), dtype=cp.float32)
             self.shortcut_bn_beta = cp.zeros((1, num_filters, 1, 1), dtype=cp.float32)
+            self.shortcut_bn_running_mean = cp.zeros((1, num_filters, 1, 1), dtype=cp.float32)
+            self.shortcut_bn_running_var = cp.ones((1, num_filters, 1, 1), dtype=cp.float32)
 
     def describe(self) -> str:
         """
@@ -161,7 +169,11 @@ class ResBlock:
         main_path, self.bn2_cache = NetworkUtils.batch_norm(
             input=main_path,
             gamma=self.bn2_gamma,
-            beta=self.bn2_beta
+            beta=self.bn2_beta,
+            training=self.training,
+            running_mean=self.bn2_running_mean,
+            running_var=self.bn2_running_var,
+            momentum=self.bn_momentum
         )
 
         shortcut: cp.ndarray = input
@@ -170,7 +182,11 @@ class ResBlock:
             shortcut, self.shortcut_bn_cache = NetworkUtils.batch_norm(
                 input=shortcut,
                 gamma=self.shortcut_bn_gamma,
-                beta=self.shortcut_bn_beta
+                beta=self.shortcut_bn_beta,
+                training=self.training,
+                running_mean=self.shortcut_bn_running_mean,
+                running_var=self.shortcut_bn_running_var,
+                momentum=self.bn_momentum
             )
         else:
             self.shortcut_bn_cache = None
@@ -243,3 +259,36 @@ class ResBlock:
 
             if self.shortcut_bn_beta_grad is not None:
                 self.shortcut_bn_beta -= self.shortcut_bn_beta_grad * learning_rate
+
+    def train(self) -> None:
+        """
+        Put the block in training mode.
+        """
+        self.training = True
+        self.conv1.train()
+        self.conv2.train()
+        if self.shortcut_projection is not None:
+            self.shortcut_projection.train()
+
+    def eval(self) -> None:
+        """
+        Put the block in evaluation mode.
+        """
+        self.training = False
+        self.conv1.eval()
+        self.conv2.eval()
+        if self.shortcut_projection is not None:
+            self.shortcut_projection.eval()
+
+    def apply_weight_decay(self, learning_rate: float, weight_decay: float) -> None:
+        """
+        Apply decoupled weight decay to convolutional weights in the block.
+
+        Args:
+            learning_rate: Current optimizer learning rate
+            weight_decay: Weight decay coefficient
+        """
+        self.conv1.apply_weight_decay(learning_rate=learning_rate, weight_decay=weight_decay)
+        self.conv2.apply_weight_decay(learning_rate=learning_rate, weight_decay=weight_decay)
+        if self.shortcut_projection is not None:
+            self.shortcut_projection.apply_weight_decay(learning_rate=learning_rate, weight_decay=weight_decay)

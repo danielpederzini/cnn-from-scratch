@@ -12,7 +12,11 @@ class NetworkUtils:
 		input: cp.ndarray,
 		gamma: Optional[cp.ndarray] = None,
 		beta: Optional[cp.ndarray] = None,
-		epsilon: float = 1e-5
+		epsilon: float = 1e-5,
+		training: bool = True,
+		running_mean: Optional[cp.ndarray] = None,
+		running_var: Optional[cp.ndarray] = None,
+		momentum: float = 0.1
 	) -> Tuple[cp.ndarray, Dict[str, Any]]:
 		"""
 		Apply batch normalization to dense or convolutional activations.
@@ -29,6 +33,10 @@ class NetworkUtils:
 			beta: Optional shift parameter. Must broadcast to the normalized
 				statistics shape. Defaults to zeros when omitted.
 			epsilon: Small constant added to the variance for numerical stability
+			training: Whether to use batch statistics or running statistics
+			running_mean: Running mean buffer for evaluation
+			running_var: Running variance buffer for evaluation
+			momentum: Exponential moving average momentum for running statistics
 
 		Returns:
 			Tuple containing:
@@ -45,8 +53,24 @@ class NetworkUtils:
 			reduction_axes = (0, 2, 3)
 			parameter_shape = (1, input.shape[1], 1, 1)
 
-		mean: cp.ndarray = cp.mean(input, axis=reduction_axes, keepdims=True)
-		variance: cp.ndarray = cp.var(input, axis=reduction_axes, keepdims=True)
+		if training:
+			mean: cp.ndarray = cp.mean(input, axis=reduction_axes, keepdims=True)
+			variance: cp.ndarray = cp.var(input, axis=reduction_axes, keepdims=True)
+
+			if running_mean is not None:
+				running_mean *= 1.0 - momentum
+				running_mean += momentum * mean
+
+			if running_var is not None:
+				running_var *= 1.0 - momentum
+				running_var += momentum * variance
+		else:
+			if running_mean is None or running_var is None:
+				raise ValueError("Evaluation mode batch_norm requires running_mean and running_var.")
+
+			mean = running_mean
+			variance = running_var
+
 		inv_std: cp.ndarray = 1.0 / cp.sqrt(variance + epsilon)
 		normalized_input: cp.ndarray = (input - mean) * inv_std
 
@@ -73,6 +97,7 @@ class NetworkUtils:
 			"reduction_axes": reduction_axes,
 			"parameter_shape": parameter_shape,
 			"epsilon": epsilon,
+			"training": training,
 		}
 
 		return output, cache

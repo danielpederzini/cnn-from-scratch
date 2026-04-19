@@ -140,6 +140,34 @@ class Network:
         for layer in self.layers:
             layer.update_parameters(learning_rate=learning_rate)
 
+    def train(self) -> None:
+        """
+        Put the network in training mode.
+        """
+        for layer in self.layers:
+            if hasattr(layer, "train"):
+                layer.train()
+
+    def eval(self) -> None:
+        """
+        Put the network in evaluation mode.
+        """
+        for layer in self.layers:
+            if hasattr(layer, "eval"):
+                layer.eval()
+
+    def apply_weight_decay(self, learning_rate: float, weight_decay: float) -> None:
+        """
+        Apply decoupled weight decay to all trainable layers.
+
+        Args:
+            learning_rate: Current optimizer learning rate
+            weight_decay: Weight decay coefficient
+        """
+        for layer in self.layers:
+            if hasattr(layer, "apply_weight_decay"):
+                layer.apply_weight_decay(learning_rate=learning_rate, weight_decay=weight_decay)
+
     def cce_loss(self, y_pred: cp.ndarray, y_true: cp.ndarray, epsilon=1e-15) -> cp.ndarray:
         y_pred = cp.clip(y_pred, epsilon, 1. - epsilon)
         return -cp.mean(cp.sum(y_true * cp.log(y_pred), axis=1))
