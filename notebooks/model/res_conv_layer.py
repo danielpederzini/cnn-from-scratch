@@ -128,7 +128,7 @@ class ResConvLayer(ReluConvLayer):
             String description of the layer with residual shortcut details
         """
         shortcut_type: str = "identity or 1x1 projection"
-        return super().describe() + f"\n  Shortcut: {shortcut_type}"
+        return super().describe() + f"\n  Batch Norm: enabled\n  Shortcut: {shortcut_type}"
 
     def forward(self, input: cp.ndarray) -> cp.ndarray:
         """

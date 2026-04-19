@@ -90,6 +90,11 @@ class Network:
                 layer_params: int = int(weights_shape[0] * weights_shape[1] + biases_shape[0])
             elif hasattr(layer, 'filters'):
                 layer_params = int(cp.prod(cp.array(layer.filters.shape)).item() + layer.biases.shape[0])
+                if hasattr(layer, 'bn_gamma'):
+                    layer_params += int(
+                        cp.prod(cp.array(layer.bn_gamma.shape)).item()
+                        + cp.prod(cp.array(layer.bn_beta.shape)).item()
+                    )
                 if hasattr(layer, 'projection_filters') and layer.projection_filters is not None:
                     layer_params += int(
                         cp.prod(cp.array(layer.projection_filters.shape)).item() + layer.projection_biases.shape[0]

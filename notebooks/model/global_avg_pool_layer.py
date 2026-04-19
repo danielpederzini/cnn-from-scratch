@@ -80,4 +80,4 @@ class GlobalAvgPoolLayer:
         Args:
             learning_rate: Learning rate for gradient descent update
         """
-        del learning_rates
+        del learning_rate
