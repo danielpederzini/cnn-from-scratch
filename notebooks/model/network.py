@@ -1,3 +1,4 @@
+import copy
 from typing import Union
 import cupy as cp
 from .layer import Layer
@@ -62,6 +63,15 @@ class Network:
             layers.append(layer_class.from_definition(definition))
         
         return layers
+
+    def clone(self) -> "Network":
+        """
+        Create a full copy of the network state.
+
+        Returns:
+            Deep-copied network instance with independent parameters
+        """
+        return copy.deepcopy(self)
     
     def describe(self) -> None:
         """
