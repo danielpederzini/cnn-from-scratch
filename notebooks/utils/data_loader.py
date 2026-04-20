@@ -1,7 +1,7 @@
 import os
 import random
 import cupy as cp
-from PIL import Image
+from PIL import Image, ImageEnhance
 from typing import Iterator, Tuple, List, Optional
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -71,14 +71,8 @@ class ImagenetteDataLoader:
         self.labels = []
         self.collect_images()
 
-    def apply_augmentation(self, image: Image.Image, aug_chance: float = 0, flip_chance: float = 0) -> Image.Image:
-        """Apply lightweight augmentation to a PIL image."""
-        if random.random() >= aug_chance:
-            return image
-
-        if random.random() < flip_chance:
-            return image.transpose(Image.FLIP_LEFT_RIGHT)
-
+    def apply_random_crop(self, image: Image.Image):
+        """Apply a random crop to a PIL image."""
         width, height = image.size
         crop_scale = random.uniform(0.75, 0.9)
         crop_width = max(1, int(width * crop_scale))
@@ -90,6 +84,37 @@ class ImagenetteDataLoader:
         right = left + crop_width
         lower = upper + crop_height
         return image.crop((left, upper, right, lower))
+
+    def apply_color_jitter(self, image: Image.Image, brightness: float = 0.2, contrast: float = 0.2, saturation: float = 0.2) -> Image.Image:
+        """Apply random brightness and contrast adjustments to a PIL image."""
+        if random.random() < 0.5:
+            enhancer = ImageEnhance.Brightness(image)
+            factor = 1.0 + random.uniform(-brightness, brightness)
+            image = enhancer.enhance(factor)
+
+        if random.random() < 0.5:
+            enhancer = ImageEnhance.Contrast(image)
+            factor = 1.0 + random.uniform(-contrast, contrast)
+            image = enhancer.enhance(factor)
+
+        if random.random() < 0.5:
+            enhancer = ImageEnhance.Color(image)
+            factor = 1.0 + random.uniform(-saturation, saturation)
+            image = enhancer.enhance(factor)
+        
+        return image
+
+    def apply_augmentation(self, image: Image.Image, flip_chance: float = 0, color_jitter_chance: float = 0) -> Image.Image:
+        """Apply lightweight augmentation to a PIL image."""
+        image = self.apply_random_crop(image)
+
+        if random.random() < flip_chance:
+            image = image.transpose(Image.FLIP_LEFT_RIGHT)
+
+        if random.random() < color_jitter_chance:
+            image = self.apply_color_jitter(image)        
+
+        return image
     
     def collect_images(self) -> None:
         """Collect all image paths and their corresponding integer labels."""
@@ -103,7 +128,7 @@ class ImagenetteDataLoader:
                 self.image_paths.append(str(image_path))
                 self.labels.append(self.class_to_idx[class_id])
 
-    def load_image(self, image_path: str, normalize: bool = False, aug_chance: float = 0, flip_chance: float = 0) -> cp.ndarray:
+    def load_image(self, image_path: str, normalize: bool = False, flip_chance: float = 0, color_jitter_chance: float = 0) -> cp.ndarray:
         """
         Load a single image into GPU memory.
 
@@ -111,8 +136,8 @@ class ImagenetteDataLoader:
             image_path: Path to the image file
             normalize: Whether to scale pixel values into the [0, 1] range and
                 apply per-channel mean/std normalization
-            aug_chance: Probability of applying one augmentation branch
-            flip_chance: Probability that the augmentation branch uses a horizontal flip
+            flip_chance: Probability that augmentation uses a horizontal flip
+            color_jitter_chance: Probability that augmentation uses color jitter
 
         Returns:
             Image tensor of shape (channels, height, width)
@@ -124,8 +149,8 @@ class ImagenetteDataLoader:
 
         image = self.apply_augmentation(
             image=image,
-            aug_chance=aug_chance,
-            flip_chance=flip_chance
+            flip_chance=flip_chance,
+            color_jitter_chance=color_jitter_chance
         )
 
         if self.target_size is not None:
@@ -160,14 +185,14 @@ class ImagenetteDataLoader:
         encoded[cp.arange(len(labels)), label_array] = 1.0
         return encoded
     
-    def load_images(self, normalize: bool = False, aug_chance: float = 0, flip_chance: float = 0) -> Tuple[cp.ndarray, cp.ndarray]:
+    def load_images(self, normalize: bool = False, flip_chance: float = 0, color_jitter_chance: float = 0) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load all images from the dataset.
 
         Args:
             normalize: Whether to apply per-channel normalization after scaling
-            aug_chance: Probability of applying augmentation to each image
             flip_chance: Probability that augmentation uses a horizontal flip
+            color_jitter_chance: Probability that augmentation uses color jitter
 
         Returns:
             Tuple of (images, labels) where:
@@ -178,7 +203,7 @@ class ImagenetteDataLoader:
         
         for image_path in self.image_paths:
             try:
-                images.append(self.load_image(image_path=image_path, normalize=normalize, aug_chance=aug_chance, flip_chance=flip_chance))
+                images.append(self.load_image(image_path=image_path, normalize=normalize, flip_chance=flip_chance, color_jitter_chance=color_jitter_chance))
             except Exception as e:
                 print(f"Error loading image {image_path}: {e}")
                 continue
@@ -193,8 +218,8 @@ class ImagenetteDataLoader:
         indices: List[int],
         normalize: bool = False,
         one_hot: bool = True,
-        aug_chance: float = 0,
-        flip_chance: float = 0
+        flip_chance: float = 0,
+        color_jitter_chance: float = 0
     ) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load a batch of images by their indices.
@@ -203,8 +228,8 @@ class ImagenetteDataLoader:
             indices: List of image indices to load
             normalize: Whether to apply per-channel normalization after scaling
             one_hot: Whether to one-hot encode labels
-            aug_chance: Probability of applying augmentation
             flip_chance: Probability of applying horizontal flip during augmentation
+            color_jitter_chance: Probability of applying color jitter during augmentation
 
         Returns:
             Tuple of (batch_images, batch_labels) where:
@@ -217,7 +242,7 @@ class ImagenetteDataLoader:
         for idx in indices:
             try:
                 image_path = self.image_paths[idx]
-                image_array = self.load_image(image_path=image_path, normalize=normalize, aug_chance=aug_chance, flip_chance=flip_chance)
+                image_array = self.load_image(image_path=image_path, normalize=normalize, flip_chance=flip_chance, color_jitter_chance=color_jitter_chance)
                 batch_images.append(image_array)
                 batch_labels.append(self.labels[idx])
             except Exception as e:
@@ -235,8 +260,8 @@ class ImagenetteDataLoader:
         normalize: bool = False,
         one_hot: bool = True,
         shuffle: bool = False,
-        aug_chance: float = 0,
-        flip_chance: float = 0
+        flip_chance: float = 0,
+        color_jitter_chance: float = 0
     ) -> Iterator[Tuple[cp.ndarray, cp.ndarray]]:
         """
         Iterate over the dataset one batch at a time.
@@ -246,8 +271,8 @@ class ImagenetteDataLoader:
             normalize: Whether to apply per-channel normalization after scaling
             one_hot: Whether to one-hot encode labels
             shuffle: Whether to shuffle sample order before iteration
-            aug_chance: Probability of applying augmentation to each loaded image
             flip_chance: Probability that augmentation uses a horizontal flip
+            color_jitter_chance: Probability that augmentation uses color jitter
 
         Yields:
             Tuples of (batch_images, batch_labels)
@@ -266,8 +291,8 @@ class ImagenetteDataLoader:
                 indices=batch_indices,
                 normalize=normalize,
                 one_hot=one_hot,
-                aug_chance=aug_chance,
-                flip_chance=flip_chance
+                flip_chance=flip_chance,
+                color_jitter_chance=color_jitter_chance
             )
 
     def get_normalization_stats(self) -> Tuple[cp.ndarray, cp.ndarray]:
@@ -318,8 +343,8 @@ class ImagenetteDataLoader:
         self,
         index: int,
         figsize: Tuple[int, int] = (6, 6),
-        aug_chance: float = 0,
-        flip_chance: float = 0
+        flip_chance: float = 0,
+        color_jitter_chance: float = 0
     ) -> None:
         """
         Plot a single image by its index.
@@ -327,14 +352,14 @@ class ImagenetteDataLoader:
         Args:
             index: Image index to plot
             figsize: Tuple of (width, height) for the figure size
-            aug_chance: Probability of applying augmentation before plotting
             flip_chance: Probability that augmentation uses a horizontal flip
+            color_jitter_chance: Probability that augmentation uses color jitter
         """
         try:
             image = Image.open(self.image_paths[index])
             if image.mode != 'RGB':
                 image = image.convert('RGB')
-            image = self.apply_augmentation(image=image, aug_chance=aug_chance, flip_chance=flip_chance)
+            image = self.apply_augmentation(image=image, flip_chance=flip_chance, color_jitter_chance=color_jitter_chance)
             if self.target_size is not None:
                 image = image.resize(self.target_size, Image.Resampling.LANCZOS)
             
@@ -354,8 +379,8 @@ class ImagenetteDataLoader:
         self,
         indices: List[int],
         figsize: Tuple[int, int] = (12, 10),
-        aug_chance: float = 0,
-        flip_chance: float = 0
+        flip_chance: float = 0,
+        color_jitter_chance: float = 0
     ) -> None:
         """
         Plot multiple images in a grid.
@@ -363,8 +388,8 @@ class ImagenetteDataLoader:
         Args:
             indices: List of image indices to plot
             figsize: Tuple of (width, height) for the figure size
-            aug_chance: Probability of applying augmentation before plotting
             flip_chance: Probability that augmentation uses a horizontal flip
+            color_jitter_chance: Probability that augmentation uses color jitter
         """
         num_images = len(indices)
         cols = min(4, num_images)
@@ -381,7 +406,7 @@ class ImagenetteDataLoader:
                 image = Image.open(self.image_paths[idx])
                 if image.mode != 'RGB':
                     image = image.convert('RGB')
-                image = self.apply_augmentation(image=image, aug_chance=aug_chance, flip_chance=flip_chance)
+                image = self.apply_augmentation(image=image, flip_chance=flip_chance, color_jitter_chance=color_jitter_chance)
                 if self.target_size is not None:
                     image = image.resize(self.target_size, Image.Resampling.LANCZOS)
                 

@@ -150,22 +150,6 @@ class Network:
         for layer in self.layers:
             layer.update_parameters(learning_rate=learning_rate, weight_decay_lambda=weight_decay_lambda)
 
-    def train(self) -> None:
-        """
-        Put the network in training mode.
-        """
-        for layer in self.layers:
-            if hasattr(layer, "train"):
-                layer.train()
-
-    def eval(self) -> None:
-        """
-        Put the network in evaluation mode.
-        """
-        for layer in self.layers:
-            if hasattr(layer, "eval"):
-                layer.eval()
-
     def cce_loss(self, y_pred: cp.ndarray, y_true: cp.ndarray, epsilon=1e-15) -> cp.ndarray:
         """
         Compute categorical cross-entropy loss.
