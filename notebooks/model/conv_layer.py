@@ -1,6 +1,5 @@
 import cupy as cp
 from typing import Optional, Tuple, Dict, Any
-from .utils.convolution_utils import im2col, col2im
 
 class ConvLayer:
     """
@@ -138,6 +137,33 @@ class ConvLayer:
 
         return grad
 
+    def get_im2col_indices(self, input_shape: Tuple[int, int, int, int]) -> Tuple[cp.ndarray, cp.ndarray, cp.ndarray, int, int]:
+        _, num_channels, img_height, img_width = input_shape
+
+        img_height_padded: int = img_height + 2 * self.padding
+        img_width_padded: int = img_width + 2 * self.padding
+
+        output_height: int = (img_height_padded - self.kernel_height) // self.stride + 1
+        output_width: int = (img_width_padded - self.kernel_width) // self.stride + 1
+
+        i_offset: cp.ndarray = cp.repeat(cp.arange(self.kernel_height), self.kernel_width)
+        i_offset = cp.tile(i_offset, num_channels)
+
+        j_offset: cp.ndarray = cp.tile(cp.arange(self.kernel_width), self.kernel_height)
+        j_offset = cp.tile(j_offset, num_channels)
+
+        i_output: cp.ndarray = self.stride * cp.repeat(cp.arange(output_height), output_width)
+        j_output: cp.ndarray = self.stride * cp.tile(cp.arange(output_width), output_height)
+
+        i: cp.ndarray = i_offset.reshape(-1, 1) + i_output.reshape(1, -1)
+        j: cp.ndarray = j_offset.reshape(-1, 1) + j_output.reshape(1, -1)
+        k: cp.ndarray = cp.repeat(
+            cp.arange(num_channels),
+            self.kernel_height * self.kernel_width
+        ).reshape(-1, 1)
+
+        return k, i, j, output_height, output_width
+
     def im2col(self, input: cp.ndarray) -> Tuple[cp.ndarray, int, int]:
         """
         Convert image batch to column matrix using im2col algorithm.
@@ -152,13 +178,29 @@ class ConvLayer:
                 - output_height: Height of the output feature map
                 - output_width: Width of the output feature map
         """
-        return im2col(
-            input=input,
-            kernel_height=self.kernel_height,
-            kernel_width=self.kernel_width,
-            padding=self.padding,
-            stride=self.stride
+        x_padded: cp.ndarray = cp.pad(
+            input,
+            ((0, 0), (0, 0), (self.padding, self.padding), (self.padding, self.padding))
         )
+
+        k: cp.ndarray
+        i: cp.ndarray
+        j: cp.ndarray
+        output_height: int
+        output_width: int
+        k, i, j, output_height, output_width = self.get_im2col_indices(
+            input_shape=input.shape
+        )
+
+        cols: cp.ndarray = x_padded[:, k, i, j]
+
+        num_channels: int = input.shape[1]
+        cols = cols.transpose(0, 2, 1).reshape(
+            -1,
+            num_channels * self.kernel_height * self.kernel_width
+        )
+
+        return cols, output_height, output_width
 
     def col2im(self, input_cols_grad: cp.ndarray, input_shape: Tuple[int, int, int, int]) -> cp.ndarray:
         """
@@ -171,14 +213,48 @@ class ConvLayer:
         Returns:
             Input gradient tensor matching the original input shape
         """
-        return col2im(
-            input_cols_grad=input_cols_grad,
-            input_shape=input_shape,
-            kernel_height=self.kernel_height,
-            kernel_width=self.kernel_width,
-            padding=self.padding,
-            stride=self.stride
+        num_samples, num_channels, img_height, img_width = input_shape
+
+        k: cp.ndarray
+        i: cp.ndarray
+        j: cp.ndarray
+        output_height: int
+        output_width: int
+        k, i, j, output_height, output_width = self.get_im2col_indices(
+            input_shape=input_shape
         )
+
+        x_padded_grad: cp.ndarray = cp.zeros(
+            (num_samples, num_channels, img_height + 2 * self.padding, img_width + 2 * self.padding),
+            dtype=input_cols_grad.dtype
+        )
+
+        cols_reshaped: cp.ndarray = input_cols_grad.reshape(
+            num_samples,
+            output_height * output_width,
+            -1
+        ).transpose(0, 2, 1)
+
+        sample_indices: cp.ndarray = cp.arange(num_samples).reshape(-1, 1, 1)
+        channel_indices: cp.ndarray = k.reshape(1, -1, 1)
+        row_indices: cp.ndarray = i.reshape(1, *i.shape)
+        col_indices: cp.ndarray = j.reshape(1, *j.shape)
+
+        cp.add.at(
+            x_padded_grad,
+            (sample_indices, channel_indices, row_indices, col_indices),
+            cols_reshaped
+        )
+
+        if self.padding == 0:
+            return x_padded_grad
+
+        return x_padded_grad[
+            :,
+            :,
+            self.padding:-self.padding,
+            self.padding:-self.padding
+        ]
 
     def convolve(self, input: cp.ndarray) -> cp.ndarray:
         """
