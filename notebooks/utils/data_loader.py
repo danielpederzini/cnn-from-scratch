@@ -104,9 +104,16 @@ class ImagenetteDataLoader:
         
         return image
 
-    def apply_augmentation(self, image: Image.Image, flip_chance: float = 0, color_jitter_chance: float = 0) -> Image.Image:
+    def apply_augmentation(
+        self,
+        image: Image.Image,
+        random_crop_chance: float = 0,
+        flip_chance: float = 0,
+        color_jitter_chance: float = 0
+    ) -> Image.Image:
         """Apply lightweight augmentation to a PIL image."""
-        image = self.apply_random_crop(image)
+        if random.random() < random_crop_chance:
+            image = self.apply_random_crop(image)
 
         if random.random() < flip_chance:
             image = image.transpose(Image.FLIP_LEFT_RIGHT)
@@ -115,6 +122,54 @@ class ImagenetteDataLoader:
             image = self.apply_color_jitter(image)        
 
         return image
+
+    def apply_cut_mix(
+        self,
+        images: cp.ndarray,
+        labels: cp.ndarray,
+        alpha: float = 1.0
+    ) -> Tuple[cp.ndarray, cp.ndarray]:
+        """Apply CutMix augmentation to a batch of images and one-hot labels."""
+        batch_size, _, image_height, image_width = images.shape
+        cut_mix_lambda = random.betavariate(alpha, alpha) if alpha > 0 else 1.0
+        cut_ratio = (1.0 - cut_mix_lambda) ** 0.5
+        cut_width = max(1, int(image_width * cut_ratio))
+        cut_height = max(1, int(image_height * cut_ratio))
+
+        center_x = random.randint(0, image_width - 1)
+        center_y = random.randint(0, image_height - 1)
+
+        left = max(0, center_x - cut_width // 2)
+        upper = max(0, center_y - cut_height // 2)
+        right = min(image_width, left + cut_width)
+        lower = min(image_height, upper + cut_height)
+        left = max(0, right - cut_width)
+        upper = max(0, lower - cut_height)
+
+        shuffled_indices = cp.random.permutation(batch_size)
+        mixed_images = images.copy()
+        mixed_images[:, :, upper:lower, left:right] = images[shuffled_indices, :, upper:lower, left:right]
+
+        patch_area = max(0, right - left) * max(0, lower - upper)
+        adjusted_lambda = 1.0 - (patch_area / float(image_width * image_height))
+        mixed_labels = (adjusted_lambda * labels) + ((1.0 - adjusted_lambda) * labels[shuffled_indices])
+
+        return mixed_images, mixed_labels
+
+    def format_label_mix(self, label_vector: cp.ndarray, top_k: int = 2) -> str:
+        """Format a one-hot or mixed label vector for display in plots."""
+        flattened_labels = cp.ravel(label_vector)
+        top_indices = cp.asnumpy(cp.argsort(flattened_labels)[-top_k:][::-1])
+        parts: List[str] = []
+
+        for class_index in top_indices:
+            weight = float(flattened_labels[class_index].item())
+            if weight <= 0:
+                continue
+            class_name = self.classes[int(class_index)]
+            parts.append(f"{class_name} ({weight:.2f})")
+
+        return "\n".join(parts) if parts else "Unknown"
     
     def collect_images(self) -> None:
         """Collect all image paths and their corresponding integer labels."""
@@ -128,7 +183,14 @@ class ImagenetteDataLoader:
                 self.image_paths.append(str(image_path))
                 self.labels.append(self.class_to_idx[class_id])
 
-    def load_image(self, image_path: str, normalize: bool = False, flip_chance: float = 0, color_jitter_chance: float = 0) -> cp.ndarray:
+    def load_image(
+        self,
+        image_path: str,
+        normalize: bool = False,
+        random_crop_chance: float = 0,
+        flip_chance: float = 0,
+        color_jitter_chance: float = 0
+    ) -> cp.ndarray:
         """
         Load a single image into GPU memory.
 
@@ -136,6 +198,7 @@ class ImagenetteDataLoader:
             image_path: Path to the image file
             normalize: Whether to scale pixel values into the [0, 1] range and
                 apply per-channel mean/std normalization
+            random_crop_chance: Probability that augmentation uses a random crop
             flip_chance: Probability that augmentation uses a horizontal flip
             color_jitter_chance: Probability that augmentation uses color jitter
 
@@ -149,6 +212,7 @@ class ImagenetteDataLoader:
 
         image = self.apply_augmentation(
             image=image,
+            random_crop_chance=random_crop_chance,
             flip_chance=flip_chance,
             color_jitter_chance=color_jitter_chance
         )
@@ -185,14 +249,23 @@ class ImagenetteDataLoader:
         encoded[cp.arange(len(labels)), label_array] = 1.0
         return encoded
     
-    def load_images(self, normalize: bool = False, flip_chance: float = 0, color_jitter_chance: float = 0) -> Tuple[cp.ndarray, cp.ndarray]:
+    def load_images(
+        self,
+        normalize: bool = False,
+        random_crop_chance: float = 0,
+        flip_chance: float = 0,
+        color_jitter_chance: float = 0,
+        cut_mix_chance: float = 0
+    ) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load all images from the dataset.
 
         Args:
             normalize: Whether to apply per-channel normalization after scaling
+            random_crop_chance: Probability that augmentation uses a random crop
             flip_chance: Probability that augmentation uses a horizontal flip
             color_jitter_chance: Probability that augmentation uses color jitter
+            cut_mix_chance: Probability that CutMix is applied to the loaded batch
 
         Returns:
             Tuple of (images, labels) where:
@@ -203,13 +276,24 @@ class ImagenetteDataLoader:
         
         for image_path in self.image_paths:
             try:
-                images.append(self.load_image(image_path=image_path, normalize=normalize, flip_chance=flip_chance, color_jitter_chance=color_jitter_chance))
+                images.append(
+                    self.load_image(
+                        image_path=image_path,
+                        normalize=normalize,
+                        random_crop_chance=random_crop_chance,
+                        flip_chance=flip_chance,
+                        color_jitter_chance=color_jitter_chance
+                    )
+                )
             except Exception as e:
                 print(f"Error loading image {image_path}: {e}")
                 continue
         
         images = cp.stack(images, axis=0)
         labels = self.encode_labels(self.labels[:len(images)], one_hot=True)
+
+        if random.random() < cut_mix_chance:
+            images, labels = self.apply_cut_mix(images=images, labels=labels)
 
         return images, labels
     
@@ -218,8 +302,10 @@ class ImagenetteDataLoader:
         indices: List[int],
         normalize: bool = False,
         one_hot: bool = True,
+        random_crop_chance: float = 0,
         flip_chance: float = 0,
-        color_jitter_chance: float = 0
+        color_jitter_chance: float = 0,
+        cut_mix_chance: float = 0
     ) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Load a batch of images by their indices.
@@ -228,8 +314,10 @@ class ImagenetteDataLoader:
             indices: List of image indices to load
             normalize: Whether to apply per-channel normalization after scaling
             one_hot: Whether to one-hot encode labels
+            random_crop_chance: Probability of applying a random crop during augmentation
             flip_chance: Probability of applying horizontal flip during augmentation
             color_jitter_chance: Probability of applying color jitter during augmentation
+            cut_mix_chance: Probability that CutMix is applied to the loaded batch
 
         Returns:
             Tuple of (batch_images, batch_labels) where:
@@ -242,7 +330,13 @@ class ImagenetteDataLoader:
         for idx in indices:
             try:
                 image_path = self.image_paths[idx]
-                image_array = self.load_image(image_path=image_path, normalize=normalize, flip_chance=flip_chance, color_jitter_chance=color_jitter_chance)
+                image_array = self.load_image(
+                    image_path=image_path,
+                    normalize=normalize,
+                    random_crop_chance=random_crop_chance,
+                    flip_chance=flip_chance,
+                    color_jitter_chance=color_jitter_chance
+                )
                 batch_images.append(image_array)
                 batch_labels.append(self.labels[idx])
             except Exception as e:
@@ -251,6 +345,9 @@ class ImagenetteDataLoader:
         
         batch_images = cp.stack(batch_images, axis=0)
         batch_labels = self.encode_labels(batch_labels, one_hot=one_hot)
+
+        if random.random() < cut_mix_chance:
+            batch_images, batch_labels = self.apply_cut_mix(images=batch_images, labels=batch_labels)
         
         return batch_images, batch_labels
 
@@ -260,19 +357,23 @@ class ImagenetteDataLoader:
         normalize: bool = False,
         one_hot: bool = True,
         shuffle: bool = False,
+        random_crop_chance: float = 0,
         flip_chance: float = 0,
-        color_jitter_chance: float = 0
+        color_jitter_chance: float = 0,
+        cut_mix_chance: float = 0
     ) -> Iterator[Tuple[cp.ndarray, cp.ndarray]]:
         """
         Iterate over the dataset one batch at a time.
 
         Args:
             batch_size: Number of samples per batch
-            normalize: Whether to apply per-channel normalization after scaling
+            normalize: Whether to apply per-channel normalization after scalingW
             one_hot: Whether to one-hot encode labels
             shuffle: Whether to shuffle sample order before iteration
+            random_crop_chance: Probability that augmentation uses a random crop
             flip_chance: Probability that augmentation uses a horizontal flip
             color_jitter_chance: Probability that augmentation uses color jitter
+            cut_mix_chance: Probability that CutMix is applied to each yielded batch
 
         Yields:
             Tuples of (batch_images, batch_labels)
@@ -291,8 +392,10 @@ class ImagenetteDataLoader:
                 indices=batch_indices,
                 normalize=normalize,
                 one_hot=one_hot,
+                random_crop_chance=random_crop_chance,
                 flip_chance=flip_chance,
-                color_jitter_chance=color_jitter_chance
+                color_jitter_chance=color_jitter_chance,
+                cut_mix_chance=cut_mix_chance
             )
 
     def get_normalization_stats(self) -> Tuple[cp.ndarray, cp.ndarray]:
@@ -343,8 +446,10 @@ class ImagenetteDataLoader:
         self,
         index: int,
         figsize: Tuple[int, int] = (6, 6),
+        random_crop_chance: float = 0,
         flip_chance: float = 0,
-        color_jitter_chance: float = 0
+        color_jitter_chance: float = 0,
+        cut_mix_chance: float = 0
     ) -> None:
         """
         Plot a single image by its index.
@@ -352,23 +457,36 @@ class ImagenetteDataLoader:
         Args:
             index: Image index to plot
             figsize: Tuple of (width, height) for the figure size
+            random_crop_chance: Probability that augmentation uses a random crop
             flip_chance: Probability that augmentation uses a horizontal flip
             color_jitter_chance: Probability that augmentation uses color jitter
+            cut_mix_chance: Probability that CutMix is applied before plotting
         """
         try:
-            image = Image.open(self.image_paths[index])
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            image = self.apply_augmentation(image=image, flip_chance=flip_chance, color_jitter_chance=color_jitter_chance)
-            if self.target_size is not None:
-                image = image.resize(self.target_size, Image.Resampling.LANCZOS)
-            
-            class_name = self.classes[self.labels[index]]
-            class_id = self.class_ids[self.labels[index]]
+            plot_indices = [index]
+            if cut_mix_chance > 0 and len(self) > 1:
+                partner_index = random.randrange(len(self) - 1)
+                if partner_index >= index:
+                    partner_index += 1
+                plot_indices.append(partner_index)
+
+            batch_images, batch_labels = self.load_batch(
+                indices=plot_indices,
+                normalize=False,
+                one_hot=True,
+                random_crop_chance=random_crop_chance,
+                flip_chance=flip_chance,
+                color_jitter_chance=color_jitter_chance,
+                cut_mix_chance=cut_mix_chance
+            )
+
+            image = cp.asnumpy(cp.transpose(batch_images[0], (1, 2, 0)))
+            image = image.clip(0.0, 1.0)
+            label_description = self.format_label_mix(batch_labels[0])
             
             plt.figure(figsize=figsize)
             plt.imshow(image)
-            plt.title(f"Class: {class_name} [{class_id}] (Index: {index})")
+            plt.title(f"Label: {label_description} (Index: {index})")
             plt.axis('off')
             plt.tight_layout()
             plt.show()
@@ -379,8 +497,10 @@ class ImagenetteDataLoader:
         self,
         indices: List[int],
         figsize: Tuple[int, int] = (12, 10),
+        random_crop_chance: float = 0,
         flip_chance: float = 0,
-        color_jitter_chance: float = 0
+        color_jitter_chance: float = 0,
+        cut_mix_chance: float = 0
     ) -> None:
         """
         Plot multiple images in a grid.
@@ -388,12 +508,26 @@ class ImagenetteDataLoader:
         Args:
             indices: List of image indices to plot
             figsize: Tuple of (width, height) for the figure size
+            random_crop_chance: Probability that augmentation uses a random crop
             flip_chance: Probability that augmentation uses a horizontal flip
             color_jitter_chance: Probability that augmentation uses color jitter
+            cut_mix_chance: Probability that CutMix is applied before plotting
         """
         num_images = len(indices)
         cols = min(4, num_images)
         rows = (num_images + cols - 1) // cols
+
+        batch_images, batch_labels = self.load_batch(
+            indices=indices,
+            normalize=False,
+            one_hot=True,
+            random_crop_chance=random_crop_chance,
+            flip_chance=flip_chance,
+            color_jitter_chance=color_jitter_chance,
+            cut_mix_chance=cut_mix_chance
+        )
+
+        plotted_count = int(batch_images.shape[0])
         
         fig, axes = plt.subplots(rows, cols, figsize=figsize)
         if num_images == 1:
@@ -401,24 +535,19 @@ class ImagenetteDataLoader:
         else:
             axes = axes.flatten()
         
-        for i, idx in enumerate(indices):
+        for i in range(plotted_count):
             try:
-                image = Image.open(self.image_paths[idx])
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                image = self.apply_augmentation(image=image, flip_chance=flip_chance, color_jitter_chance=color_jitter_chance)
-                if self.target_size is not None:
-                    image = image.resize(self.target_size, Image.Resampling.LANCZOS)
-                
-                class_name = self.classes[self.labels[idx]]
-                class_id = self.class_ids[self.labels[idx]]
+                idx = indices[i]
+                image = cp.asnumpy(cp.transpose(batch_images[i], (1, 2, 0)))
+                image = image.clip(0.0, 1.0)
+                label_description = self.format_label_mix(batch_labels[i])
                 axes[i].imshow(image)
-                axes[i].set_title(f"{class_name}\n[{class_id}]")
+                axes[i].set_title(f"{label_description}\n(Index: {idx})")
                 axes[i].axis('off')
             except Exception as e:
                 print(f"Error plotting image at index {idx}: {e}")
         
-        for j in range(i + 1, len(axes)):
+        for j in range(plotted_count, len(axes)):
             axes[j].axis('off')
         
         plt.tight_layout()
